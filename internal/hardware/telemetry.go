@@ -1,0 +1,109 @@
+package hardware
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"syscall"
+)
+
+type HardwareStats struct {
+	BatteryLevelPct int     `json:"battery_level_pct"`
+	BatteryTempC    float64 `json:"battery_temp_c"`
+	BatteryStatus   string  `json:"battery_status"`
+	CPUTempC        float64 `json:"cpu_temp_c"`
+	CPULoad1m       float64 `json:"cpu_load_1m"`
+	RAMUsedMB       int64   `json:"ram_used_mb"`
+	RAMTotalMB      int64   `json:"ram_total_mb"`
+	StorageFreeGB   float64 `json:"storage_free_gb"`
+	StorageTotalGB  float64 `json:"storage_total_gb"`
+}
+
+func GetStats() HardwareStats {
+	var s HardwareStats
+
+	// 1. Battery Temp & Level
+	if data, err := os.ReadFile("/sys/class/power_supply/battery/temp"); err == nil {
+		if t, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64); err == nil {
+			if t > 200 {
+				s.BatteryTempC = t / 10.0
+			} else {
+				s.BatteryTempC = t
+			}
+		}
+	}
+
+	if data, err := os.ReadFile("/sys/class/power_supply/battery/capacity"); err == nil {
+		if cap, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+			s.BatteryLevelPct = cap
+		}
+	}
+
+	if data, err := os.ReadFile("/sys/class/power_supply/battery/status"); err == nil {
+		s.BatteryStatus = strings.TrimSpace(string(data))
+	}
+	// 2. CPU Temperature from thermal zones
+	for i := range 40 {
+		typePath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/type", i)
+		tempPath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/temp", i)
+		if zType, err := os.ReadFile(typePath); err == nil {
+			tStr := strings.ToLower(string(zType))
+			if strings.Contains(tStr, "cpu") || strings.Contains(tStr, "soc") || strings.Contains(tStr, "tsens") {
+				if zTemp, err := os.ReadFile(tempPath); err == nil {
+					if t, err := strconv.ParseFloat(strings.TrimSpace(string(zTemp)), 64); err == nil {
+						if t > 1000 {
+							s.CPUTempC = t / 1000.0
+						} else {
+							s.CPUTempC = t
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Load average
+	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) > 0 {
+			if l, err := strconv.ParseFloat(parts[0], 64); err == nil {
+				s.CPULoad1m = l
+			}
+		}
+	}
+
+	// 4. Meminfo
+	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+		var totalKB, availKB int64
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					totalKB, _ = strconv.ParseInt(fields[1], 10, 64)
+				}
+			} else if strings.HasPrefix(line, "MemAvailable:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					availKB, _ = strconv.ParseInt(fields[1], 10, 64)
+				}
+			}
+		}
+		if totalKB > 0 {
+			s.RAMTotalMB = totalKB / 1024
+			s.RAMUsedMB = (totalKB - availKB) / 1024
+		}
+	}
+
+	// 5. Storage /data
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/data", &stat); err == nil {
+		totalBytes := stat.Blocks * uint64(stat.Bsize)
+		freeBytes := stat.Bavail * uint64(stat.Bsize)
+		s.StorageTotalGB = float64(totalBytes) / (1024 * 1024 * 1024)
+		s.StorageFreeGB = float64(freeBytes) / (1024 * 1024 * 1024)
+	}
+
+	return s
+}

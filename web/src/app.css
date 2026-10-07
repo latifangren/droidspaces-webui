@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* DARK THEME (DEFAULT) */
+  --bg: #18151e;
+  --paper: #24202b;
+  --panel-alt: #302b38;
+  --ink: #fffaf4;
+  --muted: #aaa2ad;
+  --line: #0d0b10;
+  --shadow: 4px 5px 0 #08070a;
+
+  /* ACCENTS (RETRO POP - DEFAULT) */
+  --pink: #ff5ca8;
+  --yellow: #ffe14a;
+  --cyan: #55dfff;
+  --lime: #b8f34a;
+  --purple: #9b7cff;
+  --orange: #ff9955;
+
+  --primary: var(--yellow);
+  --primary-text: #000000;
+  --secondary: var(--pink);
+  --accent: var(--cyan);
+}
+
+:root[data-theme="light"] {
+  --bg: #fff6e8;
+  --paper: #fffdf8;
+  --panel-alt: #e8e5da;
+  --ink: #17151a;
+  --muted: #77717a;
+  --line: #17151a;
+  --shadow: 4px 5px 0 #17151a;
+
+  --pink: #ff4090;
+  --yellow: #f5c400;
+  --cyan: #00bedb;
+  --lime: #85d600;
+  --purple: #7a52f4;
+  --orange: #f26d1b;
+
+  --primary: var(--yellow);
+  --primary-text: #000000;
+  --secondary: var(--pink);
+  --accent: var(--cyan);
+}
+
+/* 6 PRESET PALETTES */
+:root[data-color="synthwave"] {
+  --pink: #ff2d95; --yellow: #ff2d95; --cyan: #00e5ff;
+  --lime: #ff2d95; --purple: #c538ff; --orange: #ff6b35;
+  --primary: #c538ff; --primary-text: #ffffff;
+}
+
+:root[data-color="toxic"] {
+  --pink: #ff4444; --yellow: #39ff14; --cyan: #39ff14;
+  --lime: #39ff14; --purple: #ff8800; --orange: #ff6600;
+  --primary: #39ff14; --primary-text: #000000;
+}
+
+:root[data-color="arctic"] {
+  --pink: #64b5f6; --yellow: #40c4ff; --cyan: #80d8ff;
+  --lime: #82b1ff; --purple: #448aff; --orange: #29b6f6;
+  --primary: #40c4ff; --primary-text: #000000;
+}
+
+:root[data-color="sunset"] {
+  --pink: #ff1744; --yellow: #ff6d00; --cyan: #ffab40;
+  --lime: #ff9100; --purple: #ff5252; --orange: #ff3d00;
+  --primary: #ff6d00; --primary-text: #000000;
+}
+
+:root[data-color="lavender"] {
+  --pink: #f48fb1; --yellow: #b388ff; --cyan: #80d8ff;
+  --lime: #a7ffeb; --purple: #7c4dff; --orange: #ff80ab;
+  --primary: #b388ff; --primary-text: #000000;
+}
+
+* {
+  box-sizing: border-box;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tactile Neo-Brutalist Buttons */
+.btn-brutal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 2px solid var(--line);
+  box-shadow: 3px 3px 0 var(--line);
+  font-weight: 800;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+.btn-brutal:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--line);
+}
+
+.btn-brutal:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--line);
+}
+
+.btn-brutal-primary {
+  background-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.btn-brutal-danger {
+  background-color: var(--pink);
+  color: #000000;
+}
+
+/* Brutalist Cards */
+.card-brutal {
+  background-color: var(--paper);
+  border: 2px solid var(--line);
+  box-shadow: var(--shadow);
+  border-radius: 0.75rem;
+}
+
+/* Brutalist Badges */
+.badge-brutal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border: 1.5px solid var(--line);
+  font-weight: 800;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  box-shadow: 1.5px 1.5px 0 var(--line);
+  border-radius: 9999px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}

@@ -1,0 +1,6 @@
+id=droidspaces-webui
+name=Droidspaces WebUI
+version=v1.0.0
+versionCode=100
+author=latifangren
+description=Lightweight WebUI Dashboard for Droidspaces Container Engine (Svelte 5 & Go Daemon)
