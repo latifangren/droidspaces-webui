@@ -74,7 +74,7 @@ var defaultCatalog = []model.TemplateInfo{
 		MinRAM:      "256 MB",
 		Arch:        "arm64",
 		Version:     "12",
-		URL:         "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/rootfs.tar.xz",
+		URL:         "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/20261007_05:24/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      95,
 		Description: "[SERVER / HEADLESS] Homelab standard with full systemd PID 1 support. Rock-solid stability for containers, databases, and Docker. (XFCE desktop can be installed via apt).",
@@ -89,7 +89,7 @@ var defaultCatalog = []model.TemplateInfo{
 		MinRAM:      "256 MB",
 		Arch:        "arm64",
 		Version:     "24.04",
-		URL:         "https://images.linuxcontainers.org/images/ubuntu/noble/arm64/default/rootfs.tar.xz",
+		URL:         "https://images.linuxcontainers.org/images/ubuntu/noble/arm64/default/20261007_07:42/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      115,
 		Description: "[SERVER / HEADLESS] Latest LTS server with modern packages, Python 3.12, systemd, and broad toolchain. Pure headless without graphical memory footprint.",
@@ -175,6 +175,49 @@ func DeleteTemplate(templateID string) error {
 	storage := GetStorageDir()
 	targetDir := filepath.Join(storage, templateID)
 	return os.RemoveAll(targetDir)
+}
+
+func resolveDownloadURL(t *model.TemplateInfo, client *http.Client) string {
+	if !strings.Contains(t.URL, "images.linuxcontainers.org") {
+		return t.URL
+	}
+
+	distro := t.Distro
+	release := "bookworm"
+	if distro == "ubuntu" {
+		release = "noble"
+	}
+
+	prefix := fmt.Sprintf("%s;%s;arm64;default;", distro, release)
+	req, err := http.NewRequest("GET", "https://images.linuxcontainers.org/meta/1.0/index-system", nil)
+	if err == nil {
+		req.Header.Set("User-Agent", "Droidspaces-WebUI/1.0")
+		if resp, err := client.Do(req); err == nil && resp.StatusCode == 200 {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			lines := strings.Split(string(body), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, prefix) {
+					parts := strings.Split(line, ";")
+					if len(parts) >= 6 {
+						path := parts[5]
+						resolved := fmt.Sprintf("https://images.linuxcontainers.org%srootfs.tar.xz", path)
+						log.Printf("[templates] Dynamically resolved %s rootfs to %s", t.ID, resolved)
+						return resolved
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to latest verified build
+	if distro == "debian" {
+		return "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/20261007_05:24/rootfs.tar.xz"
+	}
+	if distro == "ubuntu" {
+		return "https://images.linuxcontainers.org/images/ubuntu/noble/arm64/default/20261007_07:42/rootfs.tar.xz"
+	}
+	return t.URL
 }
 
 func extractArchive(archivePath, targetDir, archiveType string) error {
@@ -282,9 +325,6 @@ func StartDownload(templateID string) error {
 		targetDir := filepath.Join(storage, t.ID)
 		tmpArchive := filepath.Join(storage, t.ID+"_temp."+t.Type)
 
-		log.Printf("[templates] Starting download for %s from %s", t.ID, t.URL)
-
-		// 1. Download archive with Android-safe DNS resolver & TLS config
 		out, err := os.Create(tmpArchive)
 		if err != nil {
 			setJobError(fmt.Sprintf("create file failed: %v", err))
@@ -300,13 +340,16 @@ func StartDownload(templateID string) error {
 			Transport: &http.Transport{
 				DialContext: dialer.DialContext,
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, // Necessary on Android due to missing /etc/ssl/certs
+					InsecureSkipVerify: true,
 				},
 			},
 			Timeout: 30 * time.Minute,
 		}
 
-		req, err := http.NewRequest("GET", t.URL, nil)
+		downloadURL := resolveDownloadURL(t, client)
+		log.Printf("[templates] Starting download for %s from %s", t.ID, downloadURL)
+
+		req, err := http.NewRequest("GET", downloadURL, nil)
 		if err != nil {
 			out.Close()
 			_ = os.Remove(tmpArchive)
@@ -317,12 +360,11 @@ func StartDownload(templateID string) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("[templates] Go HTTP client failed (%v), attempting BusyBox wget fallback...", err)
+			log.Printf("[templates] Go HTTP client failed (%v), trying BusyBox wget fallback...", err)
 			out.Close()
 			_ = os.Remove(tmpArchive)
 
-			// Fallback: Busybox wget
-			bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "wget", "-O", tmpArchive, t.URL)
+			bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "wget", "-O", tmpArchive, downloadURL)
 			if errBB := bbCmd.Run(); errBB != nil {
 				setJobError(fmt.Sprintf("HTTP & Busybox download failed: %v (busybox: %v)", err, errBB))
 				return
@@ -366,7 +408,6 @@ func StartDownload(templateID string) error {
 
 		log.Printf("[templates] Download complete for %s, extracting to %s", t.ID, targetDir)
 
-		// 2. Extract archive
 		downloadLock.Lock()
 		jobProgress = "Extracting archive to rootfs folder..."
 		downloadLock.Unlock()
