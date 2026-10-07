@@ -12,6 +12,9 @@
   let terminalBox: HTMLElement;
   let showAddPresetModal = false;
 
+  $: if (!selectedContainer && containersData?.running?.length > 0) {
+    selectedContainer = containersData.running[0].name;
+  }
   let newPresetLabel = '';
   let newPresetCmd = '';
 

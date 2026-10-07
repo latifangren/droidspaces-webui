@@ -4,13 +4,25 @@ type ShowResult struct {
 	Total      int                `json:"total"`
 	RAMTotalKB int64              `json:"ram_total_kb"`
 	Running    []ContainerSummary `json:"running"`
+	Stopped    []ContainerSummary `json:"stopped,omitempty"`
 }
 
 type ContainerSummary struct {
-	Name       string  `json:"name"`
-	PID        int     `json:"pid"`
-	RAMUsedKB  int64   `json:"ram_used_kb,omitempty"`
-	CPUPercent float64 `json:"cpu_percent,omitempty"`
+	Name            string  `json:"name"`
+	PID             int     `json:"pid"`
+	OS              string  `json:"os,omitempty"`
+	Hostname        string  `json:"hostname,omitempty"`
+	IP              string  `json:"ip,omitempty"`
+	IP6             string  `json:"ip6,omitempty"`
+	UptimeSec       int64   `json:"uptime_sec,omitempty"`
+	Uptime          string  `json:"uptime,omitempty"`
+	RAMUsedKB       int64   `json:"ram_used_kb,omitempty"`
+	CPUPermill      int64   `json:"cpu_permill,omitempty"`
+	CPUPercent      float64 `json:"cpu_percent,omitempty"`
+	RAMLimitKB      int64   `json:"ram_limit_kb,omitempty"`
+	CPULimitPermill int64   `json:"cpu_limit_permill,omitempty"`
+	Status          string  `json:"status,omitempty"` // "running" | "stopped"
+	RootFS          string  `json:"rootfs,omitempty"`
 }
 
 type StartRequest struct {
@@ -68,6 +80,7 @@ type TemplateInfo struct {
 	SizeMB      int    `json:"size_mb"`
 	Description string `json:"description"`
 	Installed   bool   `json:"installed"`
+	LocalPath   string `json:"local_path,omitempty"`
 }
 
 type SettingsConfig struct {

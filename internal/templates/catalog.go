@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
@@ -60,8 +61,8 @@ var defaultCatalog = []model.TemplateInfo{
 		Version:     "rolling",
 		URL:         "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz",
 		Type:        "tar.gz",
-		SizeMB:      450,
-		Description: "Bleeding-edge rolling release, pacman package manager, full flexibility.",
+		SizeMB:      420,
+		Description: "Cutting edge rolling distribution for advanced development and testing.",
 	},
 	{
 		ID:          "openwrt-23.05",
@@ -71,8 +72,8 @@ var defaultCatalog = []model.TemplateInfo{
 		Version:     "23.05.4",
 		URL:         "https://downloads.openwrt.org/releases/23.05.4/targets/armsr/armv8/openwrt-23.05.4-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
-		SizeMB:      30,
-		Description: "Dedicated router/firewall container for Droidspaces --net=gateway VPN killswitch.",
+		SizeMB:      25,
+		Description: "Network routing appliance, firewall, DNS sinkhole, and proxy gateway.",
 	},
 }
 
@@ -80,6 +81,7 @@ func GetStorageDir() string {
 	dirs := []string{
 		"/data/local/Droidspaces/rootfs",
 		"/data/adb/droidspaces/rootfs",
+		"/var/lib/Droidspaces/rootfs",
 		"/tmp/droidspaces/rootfs",
 	}
 	for _, d := range dirs {
@@ -99,6 +101,16 @@ func ListTemplates() []model.TemplateInfo {
 		targetDir := filepath.Join(storage, res[i].ID)
 		if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
 			res[i].Installed = true
+			if res[i].Type == "img" {
+				imgFile := filepath.Join(targetDir, "rootfs.img")
+				if _, err := os.Stat(imgFile); err == nil {
+					res[i].LocalPath = imgFile
+				} else {
+					res[i].LocalPath = targetDir
+				}
+			} else {
+				res[i].LocalPath = targetDir
+			}
 		}
 	}
 	return res
@@ -108,6 +120,58 @@ func GetDownloadStatus() (string, string) {
 	downloadLock.Lock()
 	defer downloadLock.Unlock()
 	return activeJob, jobProgress
+}
+
+func DeleteTemplate(templateID string) error {
+	storage := GetStorageDir()
+	targetDir := filepath.Join(storage, templateID)
+	return os.RemoveAll(targetDir)
+}
+
+func extractArchive(archivePath, targetDir, archiveType string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return err
+	}
+
+	if archiveType == "img" {
+		destImg := filepath.Join(targetDir, "rootfs.img")
+		return os.Rename(archivePath, destImg)
+	}
+
+	bbCandidates := []string{
+		"/data/local/Droidspaces/bin/busybox",
+		"/data/adb/ksu/bin/busybox",
+		"/data/adb/magisk/busybox",
+		"busybox",
+	}
+	var busyboxPath string
+	for _, b := range bbCandidates {
+		if _, err := os.Stat(b); err == nil {
+			busyboxPath = b
+			break
+		} else if p, err := exec.LookPath(b); err == nil {
+			busyboxPath = p
+			break
+		}
+	}
+
+	if busyboxPath != "" {
+		cmd := exec.Command(busyboxPath, "tar", "-xf", archivePath, "-C", targetDir)
+		if _, err := cmd.CombinedOutput(); err == nil {
+			return nil
+		}
+	}
+
+	var cmd *exec.Cmd
+	if archiveType == "tar.gz" {
+		cmd = exec.Command("tar", "-xzf", archivePath, "-C", targetDir)
+	} else {
+		cmd = exec.Command("tar", "-xJf", archivePath, "-C", targetDir)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("tar extraction failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func StartDownload(templateID string) error {
@@ -151,28 +215,29 @@ func StartDownload(templateID string) error {
 		if err != nil {
 			return
 		}
-		defer out.Close()
 
 		resp, err := http.Get(t.URL)
 		if err != nil {
+			out.Close()
+			_ = os.Remove(tmpArchive)
 			return
 		}
-		defer resp.Body.Close()
 
 		if _, err := io.Copy(out, resp.Body); err != nil {
+			resp.Body.Close()
+			out.Close()
+			_ = os.Remove(tmpArchive)
 			return
 		}
+		resp.Body.Close()
 		out.Close()
 
 		// 2. Extract archive
-		_ = os.MkdirAll(targetDir, 0755)
-		var cmd *exec.Cmd
-		if t.Type == "tar.gz" {
-			cmd = exec.Command("tar", "-xzf", tmpArchive, "-C", targetDir)
-		} else {
-			cmd = exec.Command("tar", "-xJf", tmpArchive, "-C", targetDir)
-		}
-		_ = cmd.Run()
+		downloadLock.Lock()
+		jobProgress = "Extracting..."
+		downloadLock.Unlock()
+
+		_ = extractArchive(tmpArchive, targetDir, t.Type)
 		_ = os.Remove(tmpArchive)
 	}()
 

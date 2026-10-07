@@ -12,11 +12,12 @@
 
   let currentRoute = 'dashboard';
   let statusData: any = { port: 84 };
-  let containersData: any = { total: 0, running: [] };
+  let containersData: any = { total: 0, running: [], stopped: [] };
   let refreshing = false;
 
   let theme = 'dark';
   let colorPalette = 'default';
+  let prefillContainer: any = null;
 
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark';
@@ -51,8 +52,11 @@
     }
   }
 
-  function navigate(route: string) {
+  function navigate(route: string, data?: any) {
     currentRoute = route;
+    if (route === 'containers' && data) {
+      prefillContainer = data;
+    }
   }
 
   onMount(() => {
@@ -95,7 +99,7 @@
         {#if currentRoute === 'dashboard'}
           <Dashboard {statusData} {containersData} onNavigate={navigate} onRefresh={loadData} />
         {:else if currentRoute === 'containers'}
-          <Containers {containersData} onRefresh={loadData} />
+          <Containers {containersData} onRefresh={loadData} {prefillContainer} onNavigate={navigate} />
         {:else if currentRoute === 'terminal'}
           <Terminal {containersData} />
         {:else if currentRoute === 'templates'}
@@ -107,6 +111,6 @@
     </main>
   </div>
 
-  <!-- Mobile Navigation Bar -->
+  <!-- Mobile Floating Dock -->
   <FloatingDock {currentRoute} onNavigate={navigate} />
 </div>

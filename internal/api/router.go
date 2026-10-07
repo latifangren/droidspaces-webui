@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/hardware"
@@ -40,16 +42,45 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/containers/", s.handleContainerAction)
 	s.mux.HandleFunc("/api/templates", s.handleTemplates)
 	s.mux.HandleFunc("/api/templates/download", s.handleTemplateDownload)
+	s.mux.HandleFunc("/api/templates/delete", s.handleTemplateDelete)
 	s.mux.HandleFunc("/api/check", s.handleCheck)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 
-	fileServer := http.FileServer(web.GetFS())
+	// Embedded Static Frontend
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api") {
-			http.NotFound(w, r)
+		path := r.URL.Path
+		if path == "/" {
+			path = "index.html"
+		} else {
+			path = strings.TrimPrefix(path, "/")
+		}
+
+		data, err := web.DistFS.ReadFile("dist/" + path)
+		if err != nil {
+			// Fallback to index.html for SPA router
+			data, err = web.DistFS.ReadFile("dist/index.html")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(data)
 			return
 		}
-		fileServer.ServeHTTP(w, r)
+
+		// Set mime types
+		if strings.HasSuffix(path, ".html") {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		} else if strings.HasSuffix(path, ".css") {
+			w.Header().Set("Content-Type", "text/css")
+		} else if strings.HasSuffix(path, ".js") {
+			w.Header().Set("Content-Type", "application/javascript")
+		} else if strings.HasSuffix(path, ".svg") {
+			w.Header().Set("Content-Type", "image/svg+xml")
+		} else if strings.HasSuffix(path, ".png") {
+			w.Header().Set("Content-Type", "image/png")
+		}
+		_, _ = w.Write(data)
 	})
 }
 
@@ -57,7 +88,7 @@ func (s *Server) sendJSON(w http.ResponseWriter, status int, data interface{}, e
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	resp := model.APIResponse{
-		Success: status >= 200 && status < 300,
+		Success: errMsg == "",
 		Data:    data,
 		Error:   errMsg,
 	}
@@ -73,6 +104,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		ramTotal = show.RAMTotalKB
 	}
 	hw := hardware.GetStats()
+
 	s.sendJSON(w, http.StatusOK, map[string]interface{}{
 		"containers_count": total,
 		"ram_total_kb":     ramTotal,
@@ -114,7 +146,7 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		res, err := s.client.Show()
 		if err != nil {
-			s.sendJSON(w, http.StatusOK, model.ShowResult{Total: 0, Running: []model.ContainerSummary{}}, "")
+			s.sendJSON(w, http.StatusOK, model.ShowResult{Total: 0, Running: []model.ContainerSummary{}, Stopped: []model.ContainerSummary{}}, "")
 			return
 		}
 		s.sendJSON(w, http.StatusOK, res, "")
@@ -156,6 +188,16 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(parts) == 3 && r.Method == http.MethodDelete {
+		err := s.client.Delete(name)
+		if err != nil {
+			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		s.sendJSON(w, http.StatusOK, map[string]string{"message": "deleted"}, "")
+		return
+	}
+
 	if len(parts) == 4 && r.Method == http.MethodPost {
 		action := parts[3]
 		switch action {
@@ -180,6 +222,13 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.sendJSON(w, http.StatusOK, map[string]string{"message": "restarted"}, "")
+		case "delete":
+			err := s.client.Delete(name)
+			if err != nil {
+				s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+				return
+			}
+			s.sendJSON(w, http.StatusOK, map[string]string{"message": "deleted"}, "")
 		case "exec":
 			var req model.ExecRequest
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -232,6 +281,26 @@ func (s *Server) handleTemplateDownload(w http.ResponseWriter, r *http.Request) 
 	s.sendJSON(w, http.StatusOK, map[string]string{"message": "download started"}, "")
 }
 
+func (s *Server) handleTemplateDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		s.sendJSON(w, http.StatusBadRequest, nil, "template ID required")
+		return
+	}
+
+	if err := templates.DeleteTemplate(req.ID); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+	s.sendJSON(w, http.StatusOK, map[string]string{"message": "deleted"}, "")
+}
+
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 	out, err := s.client.Check()
 	if err != nil && out == "" {
@@ -256,6 +325,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if cfg.Port > 0 && cfg.Port < 65535 {
 			s.port = cfg.Port
+			for _, p := range []string{
+				"/data/adb/modules/droidspaces-webui/port",
+				"/data/local/Droidspaces/webui_port",
+			} {
+				_ = os.WriteFile(p, []byte(fmt.Sprintf("%d\n", cfg.Port)), 0644)
+			}
 		}
 		s.sendJSON(w, http.StatusOK, model.SettingsConfig{
 			Port:       s.port,

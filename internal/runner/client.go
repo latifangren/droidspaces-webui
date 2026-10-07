@@ -1,12 +1,16 @@
 package runner
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
@@ -39,7 +43,10 @@ func (c *Client) BinaryPath() string {
 }
 
 func (c *Client) run(args ...string) (string, error) {
-	cmd := exec.Command(c.binPath, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, c.binPath, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -55,6 +62,14 @@ func (c *Client) run(args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+func (c *Client) getContainersDirs() []string {
+	return []string{
+		"/data/local/Droidspaces/Containers",
+		"/var/lib/Droidspaces/Containers",
+		"/tmp/droidspaces/Containers",
+	}
+}
+
 func (c *Client) Show() (*model.ShowResult, error) {
 	out, err := c.run("show", "--format")
 	if err != nil {
@@ -65,6 +80,67 @@ func (c *Client) Show() (*model.ShowResult, error) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
 		return nil, fmt.Errorf("failed to parse show output: %w", err)
 	}
+
+	runningNames := make(map[string]bool)
+	for i := range res.Running {
+		res.Running[i].Status = "running"
+		if res.Running[i].CPUPermill > 0 {
+			res.Running[i].CPUPercent = float64(res.Running[i].CPUPermill) / 10.0
+		}
+		runningNames[res.Running[i].Name] = true
+	}
+
+	// Scan workspace Containers directory for stopped containers
+	for _, cdir := range c.getContainersDirs() {
+		entries, err := os.ReadDir(cdir)
+		if err != nil {
+			continue
+		}
+		for _, ent := range entries {
+			if !ent.IsDir() {
+				continue
+			}
+			name := ent.Name()
+			if runningNames[name] {
+				continue
+			}
+
+			// Read container.config
+			cfgPath := filepath.Join(cdir, name, "container.config")
+			stoppedSummary := model.ContainerSummary{
+				Name:   name,
+				Status: "stopped",
+				PID:    0,
+			}
+
+			if f, err := os.Open(cfgPath); err == nil {
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+						continue
+					}
+					kv := strings.SplitN(line, "=", 2)
+					key := strings.TrimSpace(kv[0])
+					val := strings.TrimSpace(kv[1])
+					switch key {
+					case "hostname":
+						stoppedSummary.Hostname = val
+					case "rootfs_path":
+						stoppedSummary.RootFS = val
+					case "ip":
+						stoppedSummary.IP = val
+					}
+				}
+				f.Close()
+			}
+
+			res.Stopped = append(res.Stopped, stoppedSummary)
+			runningNames[name] = true
+		}
+	}
+
+	res.Total = len(res.Running) + len(res.Stopped)
 	return &res, nil
 }
 
@@ -176,6 +252,29 @@ func (c *Client) Restart(name string) error {
 	return err
 }
 
+func (c *Client) Delete(name string) error {
+	// 1. Stop if running
+	_ = c.Stop(name)
+
+	// 2. Remove container workspace directory
+	var lastErr error
+	deleted := false
+	for _, cdir := range c.getContainersDirs() {
+		target := filepath.Join(cdir, name)
+		if info, err := os.Stat(target); err == nil && info.IsDir() {
+			if err := os.RemoveAll(target); err != nil {
+				lastErr = err
+			} else {
+				deleted = true
+			}
+		}
+	}
+	if !deleted && lastErr != nil {
+		return lastErr
+	}
+	return nil
+}
+
 func (c *Client) Check() (string, error) {
 	return c.run("check")
 }
@@ -185,13 +284,16 @@ func (c *Client) Scan() (string, error) {
 }
 
 func (c *Client) Exec(container, command, user string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	args := []string{"run"}
 	if user != "" {
 		args = append(args, "-u", user)
 	}
 	args = append(args, "--name="+container, "--", "/bin/sh", "-c", command)
 
-	cmd := exec.Command(c.binPath, args...)
+	cmd := exec.CommandContext(ctx, c.binPath, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -210,8 +312,28 @@ func (c *Client) Exec(container, command, user string) (string, error) {
 	return output, nil
 }
 
+func (c *Client) findHostShell() string {
+	shells := []string{"/system/bin/sh", "/bin/sh", "/bin/bash", "sh"}
+	for _, s := range shells {
+		if strings.HasPrefix(s, "/") {
+			if _, err := os.Stat(s); err == nil {
+				return s
+			}
+		} else {
+			if p, err := exec.LookPath(s); err == nil {
+				return p
+			}
+		}
+	}
+	return "/bin/sh"
+}
+
 func (c *Client) ExecHost(command string) (string, error) {
-	cmd := exec.Command("/system/bin/sh", "-c", command)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	sh := c.findHostShell()
+	cmd := exec.CommandContext(ctx, sh, "-c", command)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
