@@ -13,6 +13,8 @@
     Trash2,
     Server,
     Monitor,
+    AlertTriangle,
+    X,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
@@ -21,6 +23,7 @@
   let templates: any[] = [];
   let activeJob = '';
   let progress = '';
+  let lastError = '';
   let storageDir = '';
   let loading = false;
 
@@ -101,7 +104,6 @@
   })();
 
   async function loadTemplates() {
-    loading = true;
     try {
       const res = await fetch('/api/templates');
       const json = await res.json();
@@ -109,16 +111,20 @@
         templates = json.data.templates || [];
         activeJob = json.data.active_job || '';
         progress = json.data.progress || '';
+        if (json.data.last_error) {
+          lastError = json.data.last_error;
+        }
         storageDir = json.data.storage_dir || '';
       }
     } catch (e: any) {
       console.error(e);
-    } finally {
-      loading = false;
     }
   }
 
   async function downloadTemplate(id: string) {
+    lastError = '';
+    activeJob = id;
+    progress = 'Starting download connection...';
     try {
       const res = await fetch('/api/templates/download', {
         method: 'POST',
@@ -127,12 +133,16 @@
       });
       const json = await res.json();
       if (!json.success) {
-        alert(json.error);
+        lastError = json.error || 'Failed to initiate download';
+        activeJob = '';
+        progress = '';
       } else {
-        loadTemplates();
+        await loadTemplates();
       }
     } catch (e: any) {
-      alert(e.message);
+      lastError = e.message;
+      activeJob = '';
+      progress = '';
     }
   }
 
@@ -186,7 +196,9 @@
 
   onMount(() => {
     loadTemplates();
-    const interval = setInterval(loadTemplates, 4000);
+    const interval = setInterval(() => {
+      loadTemplates();
+    }, 1500);
     return () => clearInterval(interval);
   });
 </script>
@@ -281,21 +293,38 @@
     </div>
   </div>
 
+  <!-- Download Error Alert Banner -->
+  {#if lastError}
+    <div class="p-3.5 card-brutal bg-red/10 border-2 border-red text-ink flex items-center justify-between gap-3 text-xs font-bold">
+      <div class="flex items-center gap-2">
+        <AlertTriangle size={16} class="text-red shrink-0" />
+        <span>Download Error: {lastError}</span>
+      </div>
+      <button on:click={() => (lastError = '')} class="btn-brutal !p-1 text-xs">
+        <X size={14} />
+      </button>
+    </div>
+  {/if}
+
   <!-- Download Progress Bar -->
   {#if activeJob}
     <div
-      class="card-brutal p-4 bg-primary text-primary-text flex items-center justify-between gap-4 animate-pulse"
+      class="card-brutal p-4 bg-primary text-primary-text flex items-center justify-between gap-4 animate-pulse shadow-brutal"
     >
       <div class="flex items-center gap-3">
-        <Loader2 class="animate-spin" size={20} />
+        <Loader2 class="animate-spin shrink-0" size={20} />
         <div>
           <div class="text-xs font-black uppercase tracking-wider">
             Downloading & Unpacking: {activeJob}
           </div>
-          <div class="text-[11px] font-mono font-bold mt-0.5">{progress}</div>
+          <div class="text-[11px] font-mono font-bold mt-0.5">
+            {progress || 'Fetching archive stream...'}
+          </div>
         </div>
       </div>
-      <span class="text-[10px] font-mono font-bold">Please wait...</span>
+      <span class="text-[10px] font-mono font-bold bg-panel-alt text-ink px-2 py-1 rounded border border-line">
+        In Progress
+      </span>
     </div>
   {/if}
 
@@ -303,6 +332,7 @@
     <!-- Distribution Catalog Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each filteredDistros as t}
+        {@const isDownloading = activeJob === t.id}
         <div
           class="p-5 card-brutal flex flex-col justify-between space-y-4 hover:translate-x-[-1px] transition"
         >
@@ -361,6 +391,17 @@
                   <Play size={12} />
                 </button>
               </div>
+            {:else if isDownloading}
+              <span class="text-[11px] text-primary font-mono font-bold animate-pulse">
+                Downloading...
+              </span>
+              <button
+                disabled
+                class="btn-brutal btn-brutal-primary !py-1.5 !px-3 opacity-80 cursor-wait flex items-center gap-1.5"
+              >
+                <Loader2 class="animate-spin" size={13} />
+                <span>Working</span>
+              </button>
             {:else}
               <span class="text-[11px] text-muted font-mono font-bold">Not Downloaded</span>
               <button

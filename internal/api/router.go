@@ -254,11 +254,12 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
 	list := templates.ListTemplates()
-	activeJob, progress := templates.GetDownloadStatus()
+	activeJob, progress, lastError := templates.GetDownloadStatus()
 	s.sendJSON(w, http.StatusOK, map[string]interface{}{
 		"templates":   list,
 		"active_job":  activeJob,
 		"progress":    progress,
+		"last_error":  lastError,
 		"storage_dir": templates.GetStorageDir(),
 	}, "")
 }

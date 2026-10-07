@@ -1,22 +1,51 @@
 package templates
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
+
+func init() {
+	// Android DNS Resolver Fix: Android lacks /etc/resolv.conf, causing Go pure resolver to fail on [::1]:53
+	dnsServers := []string{
+		"1.1.1.1:53",
+		"8.8.8.8:53",
+		"8.8.4.4:53",
+		"1.0.0.1:53",
+	}
+
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 4 * time.Second}
+			for _, s := range dnsServers {
+				if conn, err := d.DialContext(ctx, "udp", s); err == nil {
+					return conn, nil
+				}
+			}
+			return d.DialContext(ctx, "udp", "8.8.8.8:53")
+		},
+	}
+}
 
 var (
 	downloadLock sync.Mutex
 	activeJob    string
 	jobProgress  string
+	jobError     string
 )
 
 var defaultCatalog = []model.TemplateInfo{
@@ -136,10 +165,10 @@ func ListTemplates() []model.TemplateInfo {
 	return res
 }
 
-func GetDownloadStatus() (string, string) {
+func GetDownloadStatus() (string, string, string) {
 	downloadLock.Lock()
 	defer downloadLock.Unlock()
-	return activeJob, jobProgress
+	return activeJob, jobProgress, jobError
 }
 
 func DeleteTemplate(templateID string) error {
@@ -194,6 +223,35 @@ func extractArchive(archivePath, targetDir, archiveType string) error {
 	return nil
 }
 
+type progressWriter struct {
+	total      int64
+	downloaded int64
+	lastUpdate time.Time
+	onProgress func(downloaded, total int64)
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	pw.downloaded += int64(n)
+	now := time.Now()
+	if now.Sub(pw.lastUpdate) >= 300*time.Millisecond || pw.downloaded == pw.total {
+		pw.lastUpdate = now
+		if pw.onProgress != nil {
+			pw.onProgress(pw.downloaded, pw.total)
+		}
+	}
+	return n, nil
+}
+
+func setJobError(errMsg string) {
+	log.Printf("[templates] ERROR: %s", errMsg)
+	downloadLock.Lock()
+	activeJob = ""
+	jobProgress = ""
+	jobError = errMsg
+	downloadLock.Unlock()
+}
+
 func StartDownload(templateID string) error {
 	downloadLock.Lock()
 	if activeJob != "" {
@@ -201,7 +259,8 @@ func StartDownload(templateID string) error {
 		return fmt.Errorf("job %s already running", activeJob)
 	}
 	activeJob = templateID
-	jobProgress = "Downloading..."
+	jobProgress = "Connecting to server..."
+	jobError = ""
 	downloadLock.Unlock()
 
 	var t *model.TemplateInfo
@@ -219,46 +278,113 @@ func StartDownload(templateID string) error {
 	}
 
 	go func() {
-		defer func() {
-			downloadLock.Lock()
-			activeJob = ""
-			jobProgress = ""
-			downloadLock.Unlock()
-		}()
-
 		storage := GetStorageDir()
 		targetDir := filepath.Join(storage, t.ID)
 		tmpArchive := filepath.Join(storage, t.ID+"_temp."+t.Type)
 
-		// 1. Download archive
+		log.Printf("[templates] Starting download for %s from %s", t.ID, t.URL)
+
+		// 1. Download archive with Android-safe DNS resolver & TLS config
 		out, err := os.Create(tmpArchive)
 		if err != nil {
+			setJobError(fmt.Sprintf("create file failed: %v", err))
 			return
 		}
 
-		resp, err := http.Get(t.URL)
+		dialer := &net.Dialer{
+			Timeout:  15 * time.Second,
+			Resolver: net.DefaultResolver,
+		}
+
+		client := &http.Client{
+			Transport: &http.Transport{
+				DialContext: dialer.DialContext,
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true, // Necessary on Android due to missing /etc/ssl/certs
+				},
+			},
+			Timeout: 30 * time.Minute,
+		}
+
+		req, err := http.NewRequest("GET", t.URL, nil)
 		if err != nil {
 			out.Close()
 			_ = os.Remove(tmpArchive)
+			setJobError(fmt.Sprintf("create request failed: %v", err))
 			return
 		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 Droidspaces-WebUI/1.0 (Android aarch64)")
 
-		if _, err := io.Copy(out, resp.Body); err != nil {
-			resp.Body.Close()
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("[templates] Go HTTP client failed (%v), attempting BusyBox wget fallback...", err)
 			out.Close()
 			_ = os.Remove(tmpArchive)
-			return
+
+			// Fallback: Busybox wget
+			bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "wget", "-O", tmpArchive, t.URL)
+			if errBB := bbCmd.Run(); errBB != nil {
+				setJobError(fmt.Sprintf("HTTP & Busybox download failed: %v (busybox: %v)", err, errBB))
+				return
+			}
+		} else {
+			defer resp.Body.Close()
+
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				out.Close()
+				_ = os.Remove(tmpArchive)
+				setJobError(fmt.Sprintf("server returned HTTP %d %s", resp.StatusCode, resp.Status))
+				return
+			}
+
+			contentLength := resp.ContentLength
+			pw := &progressWriter{
+				total: contentLength,
+				onProgress: func(downloaded, total int64) {
+					downloadLock.Lock()
+					if total > 0 {
+						pct := float64(downloaded) / float64(total) * 100
+						jobProgress = fmt.Sprintf("%.1f MB / %.1f MB (%.0f%%)",
+							float64(downloaded)/(1024*1024),
+							float64(total)/(1024*1024),
+							pct)
+					} else {
+						jobProgress = fmt.Sprintf("%.1f MB downloaded", float64(downloaded)/(1024*1024))
+					}
+					downloadLock.Unlock()
+				},
+			}
+
+			if _, err := io.Copy(out, io.TeeReader(resp.Body, pw)); err != nil {
+				out.Close()
+				_ = os.Remove(tmpArchive)
+				setJobError(fmt.Sprintf("streaming failed: %v", err))
+				return
+			}
+			out.Close()
 		}
-		resp.Body.Close()
-		out.Close()
+
+		log.Printf("[templates] Download complete for %s, extracting to %s", t.ID, targetDir)
 
 		// 2. Extract archive
 		downloadLock.Lock()
-		jobProgress = "Extracting..."
+		jobProgress = "Extracting archive to rootfs folder..."
 		downloadLock.Unlock()
 
-		_ = extractArchive(tmpArchive, targetDir, t.Type)
+		if err := extractArchive(tmpArchive, targetDir, t.Type); err != nil {
+			_ = os.Remove(tmpArchive)
+			setJobError(fmt.Sprintf("extraction failed: %v", err))
+			return
+		}
 		_ = os.Remove(tmpArchive)
+
+		log.Printf("[templates] Successfully installed template: %s", t.ID)
+
+		downloadLock.Lock()
+		activeJob = ""
+		jobProgress = ""
+		jobError = ""
+		downloadLock.Unlock()
 	}()
 
 	return nil
