@@ -46,6 +46,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/templates/delete", s.handleTemplateDelete)
 	s.mux.HandleFunc("/api/check", s.handleCheck)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
+	s.mux.HandleFunc("/api/ws/terminal", s.handleTerminalWS)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 
 	// Embedded Static Frontend
