@@ -11,10 +11,8 @@
     Shield,
     Sparkles,
     Trash2,
-    Info,
     Server,
     Monitor,
-    Terminal,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
@@ -197,9 +195,9 @@
   <!-- Header Bar -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
-      <h2 class="text-xl font-black uppercase text-ink tracking-wide">RootFS Store & Workloads</h2>
+      <h2 class="text-xl font-black uppercase text-ink tracking-wide">RootFS Store & Blueprints</h2>
       <p class="text-xs text-muted mt-0.5">
-        Katalog distribusi Linux resmi & template siap pakai untuk Pixel 5
+        Official Linux distribution catalog & workload presets for Pixel 5
       </p>
     </div>
 
@@ -211,7 +209,7 @@
           ? 'bg-ink text-paper'
           : 'text-muted hover:text-ink'}"
       >
-        Semua Distro
+        All Distros
       </button>
 
       <button
@@ -246,7 +244,7 @@
     </div>
   </div>
 
-  <!-- Panduan Edukasi: Server vs Desktop -->
+  <!-- Educational Guide Box: Server vs Desktop -->
   <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal flex flex-col md:flex-row gap-4">
     <div class="flex items-start gap-3 flex-1">
       <div class="p-2 rounded-lg bg-cyan text-black border border-line shrink-0">
@@ -254,13 +252,13 @@
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Distro Server / Headless (Debian, Ubuntu, Alpine, Arch)
+          Headless Server Distros (Debian, Ubuntu, Alpine, Arch)
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          Semua distro base di bawah adalah <strong>Headless Server (CLI murni tanpa GUI)</strong>.
-          Sangat ringan, hemat baterai, dan boot super cepat (RAM 20MB - 200MB). Dikontrol via
-          <strong>Web Console</strong>, <strong>SSH</strong>, atau <strong>WebUI</strong>. Ideal untuk
-          Docker, microservices, database, dan farming.
+          All base distributions below are <strong>Headless Servers (pure CLI without GUI)</strong>.
+          Extremely lightweight, battery friendly, and sub-second boot (RAM 20MB - 200MB). Controlled via
+          <strong>Web Console</strong>, <strong>SSH</strong>, or <strong>WebUI</strong>. Ideal for
+          Docker, microservices, databases, and background farming nodes.
         </p>
       </div>
     </div>
@@ -271,13 +269,13 @@
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Bagaimana Kalau Butuh Desktop GUI (XFCE)?
+          Need a Graphical Desktop GUI (XFCE)?
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          Pilih <strong>Debian 12</strong> atau <strong>Ubuntu 24.04</strong>. Setelah kontainer jalan,
-          buka <em>Web Console</em> dan jalankan:
-          <code class="px-1.5 py-0.5 rounded bg-panel-alt border border-line font-mono text-[10px] text-ink">apt install -y xfce4</code>.
-          Centang flag <strong>Termux:X11</strong> di tab Hardware untuk render display grafis langsung ke layar HP via aplikasi Termux-X11!
+          Deploy <strong>Debian 12</strong> or <strong>Ubuntu 24.04</strong>. Inside <em>Web Console</em>,
+          run:
+          <code class="px-1.5 py-0.5 rounded bg-panel-alt border border-line font-mono text-[10px] text-ink">apt install -y xfce4 xfce4-goodies</code>.
+          Toggle the <strong>Termux:X11</strong> flag in the Hardware tab to render the desktop display directly to phone screen via Termux-X11 app!
         </p>
       </div>
     </div>
@@ -351,7 +349,7 @@
                 <button
                   on:click={() => deleteTemplate(t.id)}
                   class="btn-brutal !p-1.5 !rounded-lg text-red"
-                  title="Hapus RootFS"
+                  title="Delete RootFS"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -364,7 +362,7 @@
                 </button>
               </div>
             {:else}
-              <span class="text-[11px] text-muted font-mono font-bold">Belum Diunduh</span>
+              <span class="text-[11px] text-muted font-mono font-bold">Not Downloaded</span>
               <button
                 on:click={() => downloadTemplate(t.id)}
                 disabled={!!activeJob}

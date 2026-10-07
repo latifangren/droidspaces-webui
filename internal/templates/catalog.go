@@ -33,7 +33,7 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      4,
-		Description: "[SERVER / HEADLESS] Ultra-ringan ~4MB! Boot instan milidetik, konsumsi RAM <20MB. Dibuat khusus untuk microservice, worker background, dan Docker daemon. Murni CLI tanpa GUI desktop.",
+		Description: "[SERVER / HEADLESS] Ultra-lightweight ~4MB! Sub-second boot, minimal RAM (<20MB). Designed for microservices, background workers, and Docker engine. Pure CLI, zero GUI overhead.",
 	},
 	{
 		ID:          "debian-12",
@@ -48,7 +48,7 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      95,
-		Description: "[SERVER / HEADLESS] Server standar homelab dengan full systemd PID 1. Rock-solid stability untuk server, Docker, dan database. (Jika butuh GUI Desktop, bisa install XFCE via apt).",
+		Description: "[SERVER / HEADLESS] Homelab standard with full systemd PID 1 support. Rock-solid stability for containers, databases, and Docker. (XFCE desktop can be installed via apt).",
 	},
 	{
 		ID:          "ubuntu-24.04",
@@ -63,7 +63,7 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://images.linuxcontainers.org/images/ubuntu/noble/arm64/default/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      115,
-		Description: "[SERVER / HEADLESS] Server LTS terbaru dengan paket modern, toolchain lengkap, Python 3.12, dan systemd. Murni headless tanpa beban memori grafis desktop.",
+		Description: "[SERVER / HEADLESS] Latest LTS server with modern packages, Python 3.12, systemd, and broad toolchain. Pure headless without graphical memory footprint.",
 	},
 	{
 		ID:          "arch-linux",
@@ -78,7 +78,7 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      420,
-		Description: "[SERVER / HEADLESS] Distro rolling-release dengan pacman package manager. Paket software bleeding-edge untuk developer lanjut. Default CLI headless.",
+		Description: "[SERVER / HEADLESS] Rolling-release distribution with pacman package manager. Bleeding-edge packages for advanced developers. Default headless CLI.",
 	},
 	{
 		ID:          "openwrt-23.05",
@@ -93,7 +93,7 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://downloads.openwrt.org/releases/23.05.4/targets/armsr/armv8/openwrt-23.05.4-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      25,
-		Description: "[NETWORK ROUTER] Distribusi khusus router & firewall dengan Web UI (LuCI) di port 80. Sangat hemat RAM (<30MB) untuk VPN gateway, WireGuard, dan DNS sinkhole.",
+		Description: "[NETWORK ROUTER] Dedicated network routing & firewall appliance with LuCI Web UI on port 80. Lightweight (<30MB RAM) for VPN gateways, WireGuard, and DNS sinkholes.",
 	},
 }
 
