@@ -287,11 +287,11 @@ func (c *Client) Exec(container, command, user string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	args := []string{"run"}
+	args := []string{"--name=" + container, "run"}
 	if user != "" {
 		args = append(args, "-u", user)
 	}
-	args = append(args, "--name="+container, "--", "/bin/sh", "-c", command)
+	args = append(args, "sh", "-c", command)
 
 	cmd := exec.CommandContext(ctx, c.binPath, args...)
 	var stdout, stderr bytes.Buffer
