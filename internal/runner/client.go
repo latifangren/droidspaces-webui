@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,8 +173,55 @@ func (c *Client) Info(name string) (map[string]interface{}, error) {
 	}
 	return res, nil
 }
+func (c *Client) pruneStalePID(name string) {
+	pidsDirs := []string{
+		"/data/local/Droidspaces/Pids",
+		"/var/lib/Droidspaces/Pids",
+	}
+	for _, pdir := range pidsDirs {
+		pidFile := filepath.Join(pdir, name+".pid")
+		data, err := os.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+		pidStr := strings.TrimSpace(string(data))
+		pid, err := strconv.Atoi(pidStr)
+		if err != nil || pid <= 0 {
+			_ = os.Remove(pidFile)
+			continue
+		}
+
+		// Check if process is dead in /proc
+		procPath := fmt.Sprintf("/proc/%d", pid)
+		if _, err := os.Stat(procPath); err != nil {
+			_ = os.Remove(pidFile)
+			continue
+		}
+
+		// Check container.config inside the process root
+		cfgPath := filepath.Join(procPath, "root", "run", "droidspaces", "container.config")
+		if cfgData, err := os.ReadFile(cfgPath); err == nil {
+			matched := false
+			for _, line := range strings.Split(string(cfgData), "\n") {
+				if strings.TrimSpace(line) == "name="+name {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				// The running PID belongs to a different container!
+				_ = os.Remove(pidFile)
+			}
+		} else {
+			// Not a droidspaces container process
+			_ = os.Remove(pidFile)
+		}
+	}
+}
 
 func (c *Client) Start(req model.StartRequest) error {
+	c.pruneStalePID(req.Name)
+
 	args := []string{"start", "--name=" + req.Name}
 	if req.RootFS != "" {
 		args = append(args, "--rootfs="+req.RootFS)

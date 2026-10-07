@@ -185,7 +185,7 @@
     <div class="flex items-center justify-between border-b-2 border-line pb-3">
       <div class="flex items-center gap-2">
         <Activity size={18} class="text-primary" />
-        <h2 class="text-sm font-black uppercase text-ink">Active Micro-Containers</h2>
+        <h2 class="text-sm font-black uppercase text-ink">Active Linux Containers</h2>
       </div>
       <div class="flex items-center gap-3">
         <span class="text-xs font-mono text-muted">{runningCount} of {totalCount} Online</span>
