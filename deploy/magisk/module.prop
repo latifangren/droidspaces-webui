@@ -1,6 +1,6 @@
-id=droidspaces-webui
-name=Droidspaces WebUI
-version=v1.0.0
-versionCode=100
-author=latifangren
-description=Lightweight WebUI Dashboard for Droidspaces Container Engine (Svelte 5 & Go Daemon)
+id=droidspaces
+name=Droidspaces Container Engine & WebUI
+version=v6.6.0-webui
+versionCode=660
+author=ravindu644 & latifangren
+description=Headless Container Engine for Android (C Musl Daemon + Svelte 5 WebUI Dashboard on port 84)
