@@ -81,14 +81,30 @@ func (c *Client) Show() (*model.ShowResult, error) {
 		return nil, fmt.Errorf("failed to parse show output: %w", err)
 	}
 
-	runningNames := make(map[string]bool)
-	for i := range res.Running {
-		res.Running[i].Status = "running"
-		if res.Running[i].CPUPermill > 0 {
-			res.Running[i].CPUPercent = float64(res.Running[i].CPUPermill) / 10.0
+	seenPID := make(map[int]bool)
+	seenName := make(map[string]bool)
+	var dedupedRunning []model.ContainerSummary
+
+	for _, item := range res.Running {
+		if item.PID > 0 && seenPID[item.PID] {
+			continue
 		}
-		runningNames[res.Running[i].Name] = true
+		if item.Name != "" && seenName[item.Name] {
+			continue
+		}
+		item.Status = "running"
+		if item.CPUPermill > 0 {
+			item.CPUPercent = float64(item.CPUPermill) / 10.0
+		}
+		if item.PID > 0 {
+			seenPID[item.PID] = true
+		}
+		if item.Name != "" {
+			seenName[item.Name] = true
+		}
+		dedupedRunning = append(dedupedRunning, item)
 	}
+	res.Running = dedupedRunning
 
 	// Scan workspace Containers directory for stopped containers
 	for _, cdir := range c.getContainersDirs() {
@@ -101,7 +117,7 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				continue
 			}
 			name := ent.Name()
-			if runningNames[name] {
+			if seenName[name] {
 				continue
 			}
 
@@ -136,7 +152,7 @@ func (c *Client) Show() (*model.ShowResult, error) {
 			}
 
 			res.Stopped = append(res.Stopped, stoppedSummary)
-			runningNames[name] = true
+			seenName[name] = true
 		}
 	}
 
