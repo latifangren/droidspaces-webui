@@ -309,21 +309,21 @@
   <!-- Download Progress Bar -->
   {#if activeJob}
     <div
-      class="card-brutal p-4 bg-primary text-primary-text flex items-center justify-between gap-4 animate-pulse shadow-brutal"
+      class="p-4 rounded-xl border-2 border-line bg-[#ffe14a] text-black shadow-brutal flex items-center justify-between gap-4 select-none"
     >
-      <div class="flex items-center gap-3">
-        <Loader2 class="animate-spin shrink-0" size={20} />
-        <div>
-          <div class="text-xs font-black uppercase tracking-wider">
+      <div class="flex items-center gap-3 min-w-0">
+        <Loader2 class="animate-spin shrink-0 text-black" size={22} />
+        <div class="min-w-0">
+          <div class="text-xs font-black uppercase tracking-wider text-black">
             Downloading & Unpacking: {activeJob}
           </div>
-          <div class="text-[11px] font-mono font-bold mt-0.5">
-            {progress || 'Fetching archive stream...'}
+          <div class="text-xs font-mono font-bold mt-0.5 text-black/80 truncate">
+            {progress || 'Connecting and fetching archive stream...'}
           </div>
         </div>
       </div>
-      <span class="text-[10px] font-mono font-bold bg-panel-alt text-ink px-2 py-1 rounded border border-line">
-        In Progress
+      <span class="text-[10px] font-mono font-black uppercase bg-black text-[#ffe14a] px-2.5 py-1 rounded-lg border border-black shrink-0">
+        Active Task
       </span>
     </div>
   {/if}

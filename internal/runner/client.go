@@ -173,7 +173,20 @@ func (c *Client) Info(name string) (map[string]interface{}, error) {
 	}
 	return res, nil
 }
+func (c *Client) cleanupRogueConfigs() {
+	dirs := []string{
+		"/data/local/Droidspaces/rootfs",
+		"/data/adb/droidspaces/rootfs",
+		"/var/lib/Droidspaces/rootfs",
+		"/tmp/droidspaces/rootfs",
+	}
+	for _, d := range dirs {
+		_ = os.Remove(filepath.Join(d, "container.config"))
+	}
+}
+
 func (c *Client) pruneStalePID(name string) {
+	c.cleanupRogueConfigs()
 	pidsDirs := []string{
 		"/data/local/Droidspaces/Pids",
 		"/var/lib/Droidspaces/Pids",
@@ -220,8 +233,9 @@ func (c *Client) pruneStalePID(name string) {
 }
 
 func (c *Client) Start(req model.StartRequest) error {
+	c.cleanupRogueConfigs()
 	c.pruneStalePID(req.Name)
-
+	defer c.cleanupRogueConfigs()
 	args := []string{"start", "--name=" + req.Name}
 	if req.RootFS != "" {
 		args = append(args, "--rootfs="+req.RootFS)
