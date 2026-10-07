@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/hardware"
@@ -44,6 +45,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/templates/download", s.handleTemplateDownload)
 	s.mux.HandleFunc("/api/templates/delete", s.handleTemplateDelete)
 	s.mux.HandleFunc("/api/check", s.handleCheck)
+	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 
 	// Embedded Static Frontend
@@ -308,6 +310,68 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sendJSON(w, http.StatusOK, map[string]string{"output": out}, "")
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	logDirs := []string{
+		"/data/local/Droidspaces/Logs",
+		"/var/lib/Droidspaces/Logs",
+		"/data/adb/modules/droidspaces-webui",
+	}
+
+	fileParam := r.URL.Query().Get("file")
+	if fileParam == "" {
+		fileSet := make(map[string]bool)
+		var files []string
+		for _, dir := range logDirs {
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				continue
+			}
+			for _, ent := range entries {
+				if !ent.IsDir() && strings.HasSuffix(ent.Name(), ".log") {
+					if !fileSet[ent.Name()] {
+						fileSet[ent.Name()] = true
+						files = append(files, ent.Name())
+					}
+				}
+			}
+		}
+		s.sendJSON(w, http.StatusOK, map[string]interface{}{"files": files}, "")
+		return
+	}
+
+	safeName := filepath.Base(fileParam)
+	var targetPath string
+	for _, dir := range logDirs {
+		candidate := filepath.Join(dir, safeName)
+		if _, err := os.Stat(candidate); err == nil {
+			targetPath = candidate
+			break
+		}
+	}
+
+	if targetPath == "" {
+		s.sendJSON(w, http.StatusNotFound, nil, "log file not found: "+safeName)
+		return
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	lines := strings.Split(string(data), "\n")
+	limit := 300
+	if len(lines) > limit {
+		lines = lines[len(lines)-limit:]
+	}
+
+	s.sendJSON(w, http.StatusOK, map[string]interface{}{
+		"file":    safeName,
+		"content": strings.Join(lines, "\n"),
+	}, "")
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {

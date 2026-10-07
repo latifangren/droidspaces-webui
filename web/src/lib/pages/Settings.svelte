@@ -71,7 +71,7 @@
   });
 </script>
 
-<div class="max-w-3xl space-y-6">
+<div class="w-full space-y-6">
   <div>
     <h2 class="text-xl font-black uppercase text-ink tracking-wide">WebUI Settings</h2>
     <p class="text-xs text-muted mt-0.5">Configuration, design system options & kernel diagnostics</p>

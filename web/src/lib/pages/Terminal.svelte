@@ -152,7 +152,7 @@
   }
 </script>
 
-<div class="space-y-4 flex flex-col h-[calc(100vh-8rem)]">
+<div class="space-y-4 flex flex-col h-[calc(100vh-8rem)] w-full">
   <!-- Top bar -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 card-brutal p-4">
     <div class="flex items-center gap-3">

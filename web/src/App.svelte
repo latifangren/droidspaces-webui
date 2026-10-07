@@ -6,6 +6,7 @@
 
   import Dashboard from './lib/pages/Dashboard.svelte';
   import Containers from './lib/pages/Containers.svelte';
+  import Logs from './lib/pages/Logs.svelte';
   import Terminal from './lib/pages/Terminal.svelte';
   import Templates from './lib/pages/Templates.svelte';
   import Settings from './lib/pages/Settings.svelte';
@@ -18,11 +19,16 @@
   let theme = 'dark';
   let colorPalette = 'default';
   let prefillContainer: any = null;
+  let sidebarCollapsed = false;
 
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('ds_theme', theme);
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
   }
 
   function setColor(color: string) {
@@ -78,14 +84,20 @@
   });
 </script>
 
-<div class="flex h-screen bg-bg text-ink overflow-hidden">
+<div class="flex h-screen w-screen bg-bg text-ink overflow-hidden">
   <!-- Desktop Sidebar -->
-  <AppSidebar {currentRoute} onNavigate={navigate} />
+  <AppSidebar
+    {currentRoute}
+    collapsed={sidebarCollapsed}
+    onNavigate={navigate}
+    onToggleCollapse={toggleSidebar}
+  />
 
-  <!-- Main View Area -->
+  <!-- Main View Area (Full Width Fluid) -->
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
     <Topbar
       port={statusData.port || 84}
+      hardware={statusData.hardware || {}}
       onRefresh={loadData}
       {refreshing}
       {theme}
@@ -94,20 +106,21 @@
       onSetColor={setColor}
     />
 
-    <main class="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
-      <div class="max-w-6xl mx-auto">
-        {#if currentRoute === 'dashboard'}
-          <Dashboard {statusData} {containersData} onNavigate={navigate} onRefresh={loadData} />
-        {:else if currentRoute === 'containers'}
-          <Containers {containersData} onRefresh={loadData} {prefillContainer} onNavigate={navigate} />
-        {:else if currentRoute === 'terminal'}
-          <Terminal {containersData} />
-        {:else if currentRoute === 'templates'}
-          <Templates onNavigate={navigate} />
-        {:else if currentRoute === 'settings'}
-          <Settings {statusData} onRefresh={loadData} {colorPalette} onSetColor={setColor} />
-        {/if}
-      </div>
+    <!-- Main Content Area: Edge-to-edge full width without max-w-6xl center constraint -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 w-full">
+      {#if currentRoute === 'dashboard'}
+        <Dashboard {statusData} {containersData} onNavigate={navigate} onRefresh={loadData} />
+      {:else if currentRoute === 'containers'}
+        <Containers {containersData} onRefresh={loadData} {prefillContainer} onNavigate={navigate} />
+      {:else if currentRoute === 'logs'}
+        <Logs />
+      {:else if currentRoute === 'terminal'}
+        <Terminal {containersData} />
+      {:else if currentRoute === 'templates'}
+        <Templates onNavigate={navigate} />
+      {:else if currentRoute === 'settings'}
+        <Settings {statusData} onRefresh={loadData} {colorPalette} onSetColor={setColor} />
+      {/if}
     </main>
   </div>
 
