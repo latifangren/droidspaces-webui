@@ -73,6 +73,10 @@ type TemplateInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Distro      string `json:"distro"`
+	Category    string `json:"category"`    // "server" | "desktop" | "network"
+	Environment string `json:"environment"` // "Headless Server (CLI)" | "Desktop GUI (X11)" | etc.
+	InitSystem  string `json:"init_system"` // "systemd" | "openrc" | "procd"
+	MinRAM      string `json:"min_ram"`     // "256 MB" | "1.5 GB"
 	Arch        string `json:"arch"`
 	Version     string `json:"version"`
 	URL         string `json:"url"`

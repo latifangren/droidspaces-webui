@@ -11,11 +11,15 @@
     Shield,
     Sparkles,
     Trash2,
+    Info,
+    Server,
+    Monitor,
+    Terminal,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
 
-  let activeTab = 'distros'; // 'distros' | 'blueprints'
+  let activeTab = 'all'; // 'all' | 'server' | 'network' | 'blueprints'
   let templates: any[] = [];
   let activeJob = '';
   let progress = '';
@@ -27,9 +31,10 @@
       id: 'docker-alpine',
       name: 'Docker Daemon Box (Alpine 3.20)',
       category: 'Virtualization',
+      targetEnv: 'Headless Server',
       icon: Cpu,
       color: 'bg-cyan text-black',
-      desc: 'Lightweight Alpine rootfs configured for nested Docker Engine via --allow-sandboxing flag.',
+      desc: 'Lightweight Alpine rootfs configured for nested Docker Engine via --allow-sandboxing flag. Pure CLI, zero GUI overhead.',
       ram: '512 MB',
       ports: '2375:2375',
       distroReq: 'alpine-3.20',
@@ -39,9 +44,10 @@
       id: 'earnapp-node',
       name: 'EarnApp Passive Farming Node',
       category: 'Farming',
+      targetEnv: 'Headless Server',
       icon: Sparkles,
       color: 'bg-yellow text-black',
-      desc: 'Standalone background bandwidth worker with headless auto-start and wakelock hardening.',
+      desc: 'Standalone background bandwidth worker with headless auto-start and wakelock hardening. Runs purely in CLI background.',
       ram: '256 MB',
       ports: 'None',
       distroReq: 'debian-12',
@@ -51,9 +57,10 @@
       id: 'nginx-web',
       name: 'Nginx Static & Reverse Proxy',
       category: 'Web Server',
+      targetEnv: 'Headless Server',
       icon: Layers,
       color: 'bg-pink text-black',
-      desc: 'Production-grade high performance HTTP web server hosting static assets or proxying APIs.',
+      desc: 'High performance HTTP reverse proxy and static site hosting. Runs on minimal Alpine CLI.',
       ram: '128 MB',
       ports: '8080:80',
       distroReq: 'alpine-3.20',
@@ -63,9 +70,10 @@
       id: 'cloudflared-tunnel',
       name: 'Cloudflare Zero Trust Tunnel',
       category: 'Networking',
+      targetEnv: 'Headless Server',
       icon: Globe,
       color: 'bg-orange text-black',
-      desc: 'Securely publish WebUI and containers to the internet without opening router ports or DDNS.',
+      desc: 'Securely publish WebUI and local containers to the internet without opening router ports or DDNS.',
       ram: '128 MB',
       ports: 'Direct Tunnel',
       distroReq: 'debian-12',
@@ -76,6 +84,7 @@
       id: 'openwrt-gateway',
       name: 'OpenWRT Firewall & VPN Gateway',
       category: 'Router',
+      targetEnv: 'Network Appliance',
       icon: Shield,
       color: 'bg-lime text-black',
       desc: 'Runs full OpenWRT network stack with LuCI web interface and WireGuard tunnel support.',
@@ -85,6 +94,13 @@
       command: 'opkg update && opkg install luci wireguard-tools',
     },
   ];
+
+  $: filteredDistros = (() => {
+    if (activeTab === 'all') return templates;
+    if (activeTab === 'server') return templates.filter((t) => t.category === 'server');
+    if (activeTab === 'network') return templates.filter((t) => t.category === 'network');
+    return [];
+  })();
 
   async function loadTemplates() {
     loading = true;
@@ -181,35 +197,89 @@
   <!-- Header Bar -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
-      <h2 class="text-xl font-black uppercase text-ink tracking-wide">RootFS Store & Blueprints</h2>
+      <h2 class="text-xl font-black uppercase text-ink tracking-wide">RootFS Store & Workloads</h2>
       <p class="text-xs text-muted mt-0.5">
-        Pre-built Linux distributions and one-click workload blueprints for Pixel 5 Homelab
+        Katalog distribusi Linux resmi & template siap pakai untuk Pixel 5
       </p>
     </div>
 
-    <!-- Tab Buttons -->
-    <div class="flex items-center gap-1.5 p-1 bg-panel border-2 border-line rounded-lg self-start">
+    <!-- Category Filter Tabs -->
+    <div class="flex items-center gap-1.5 p-1 bg-panel border-2 border-line rounded-lg self-start flex-wrap">
       <button
-        on:click={() => (activeTab = 'distros')}
-        class="px-3 py-1.5 rounded transition flex items-center gap-1.5 text-xs font-black uppercase tracking-wider {activeTab ===
-        'distros'
+        on:click={() => (activeTab = 'all')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider {activeTab === 'all'
           ? 'bg-ink text-paper'
           : 'text-muted hover:text-ink'}"
       >
-        <Layers size={13} />
-        <span>Distributions</span>
+        Semua Distro
+      </button>
+
+      <button
+        on:click={() => (activeTab = 'server')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'server'
+          ? 'bg-cyan text-black'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Server size={12} />
+        <span>Server (Headless)</span>
+      </button>
+
+      <button
+        on:click={() => (activeTab = 'network')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'network'
+          ? 'bg-lime text-black'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Shield size={12} />
+        <span>Network Appliance</span>
       </button>
 
       <button
         on:click={() => (activeTab = 'blueprints')}
-        class="px-3 py-1.5 rounded transition flex items-center gap-1.5 text-xs font-black uppercase tracking-wider {activeTab ===
-        'blueprints'
-          ? 'bg-ink text-paper'
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'blueprints'
+          ? 'bg-yellow text-black'
           : 'text-muted hover:text-ink'}"
       >
-        <Sparkles size={13} />
+        <Sparkles size={12} />
         <span>Blueprints</span>
       </button>
+    </div>
+  </div>
+
+  <!-- Panduan Edukasi: Server vs Desktop -->
+  <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal flex flex-col md:flex-row gap-4">
+    <div class="flex items-start gap-3 flex-1">
+      <div class="p-2 rounded-lg bg-cyan text-black border border-line shrink-0">
+        <Server size={18} />
+      </div>
+      <div class="space-y-1">
+        <div class="text-xs font-black uppercase text-ink">
+          Distro Server / Headless (Debian, Ubuntu, Alpine, Arch)
+        </div>
+        <p class="text-[11px] text-muted leading-relaxed">
+          Semua distro base di bawah adalah <strong>Headless Server (CLI murni tanpa GUI)</strong>.
+          Sangat ringan, hemat baterai, dan boot super cepat (RAM 20MB - 200MB). Dikontrol via
+          <strong>Web Console</strong>, <strong>SSH</strong>, atau <strong>WebUI</strong>. Ideal untuk
+          Docker, microservices, database, dan farming.
+        </p>
+      </div>
+    </div>
+
+    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3 flex-1">
+      <div class="p-2 rounded-lg bg-pink text-white border border-line shrink-0">
+        <Monitor size={18} />
+      </div>
+      <div class="space-y-1">
+        <div class="text-xs font-black uppercase text-ink">
+          Bagaimana Kalau Butuh Desktop GUI (XFCE)?
+        </div>
+        <p class="text-[11px] text-muted leading-relaxed">
+          Pilih <strong>Debian 12</strong> atau <strong>Ubuntu 24.04</strong>. Setelah kontainer jalan,
+          buka <em>Web Console</em> dan jalankan:
+          <code class="px-1.5 py-0.5 rounded bg-panel-alt border border-line font-mono text-[10px] text-ink">apt install -y xfce4</code>.
+          Centang flag <strong>Termux:X11</strong> di tab Hardware untuk render display grafis langsung ke layar HP via aplikasi Termux-X11!
+        </p>
+      </div>
     </div>
   </div>
 
@@ -231,25 +301,46 @@
     </div>
   {/if}
 
-  {#if activeTab === 'distros'}
+  {#if activeTab !== 'blueprints'}
     <!-- Distribution Catalog Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {#each templates as t}
+      {#each filteredDistros as t}
         <div
           class="p-5 card-brutal flex flex-col justify-between space-y-4 hover:translate-x-[-1px] transition"
         >
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
+          <div class="space-y-2.5">
+            <!-- Header Badges -->
+            <div class="flex items-center justify-between gap-2 flex-wrap">
               <span class="badge-brutal bg-primary text-primary-text font-black">
                 {t.distro}
               </span>
-              <span class="text-[10px] font-mono text-muted font-bold">{t.size_mb} MB</span>
+
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="badge-brutal text-[9px] font-black uppercase {t.category === 'network'
+                    ? 'bg-lime text-black'
+                    : 'bg-cyan text-black'}"
+                >
+                  {t.category === 'network' ? 'NETWORK ROUTER' : 'SERVER / CLI'}
+                </span>
+                <span class="text-[10px] font-mono text-muted font-bold">{t.size_mb} MB</span>
+              </div>
             </div>
 
-            <h3 class="text-base font-black text-ink uppercase">{t.name}</h3>
+            <!-- Title & Subtitle -->
+            <div>
+              <h3 class="text-base font-black text-ink uppercase">{t.name}</h3>
+              <div class="text-[10px] font-mono font-bold text-muted mt-0.5 flex items-center gap-2">
+                <span>Init: {t.init_system || 'systemd'}</span>
+                <span>•</span>
+                <span>Min RAM: {t.min_ram || '256 MB'}</span>
+              </div>
+            </div>
+
             <p class="text-xs text-muted leading-relaxed font-medium">{t.description}</p>
           </div>
 
+          <!-- Bottom Action Bar -->
           <div class="pt-3 border-t-2 border-line flex items-center justify-between">
             {#if t.installed}
               <span class="flex items-center gap-1.5 text-[11px] font-bold text-lime">
@@ -260,7 +351,7 @@
                 <button
                   on:click={() => deleteTemplate(t.id)}
                   class="btn-brutal !p-1.5 !rounded-lg text-red"
-                  title="Delete rootfs"
+                  title="Hapus RootFS"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -273,7 +364,7 @@
                 </button>
               </div>
             {:else}
-              <span class="text-[11px] text-muted font-mono font-bold">Not Downloaded</span>
+              <span class="text-[11px] text-muted font-mono font-bold">Belum Diunduh</span>
               <button
                 on:click={() => downloadTemplate(t.id)}
                 disabled={!!activeJob}
@@ -300,7 +391,12 @@
               <span class="badge-brutal {bp.color} font-black">
                 {bp.category}
               </span>
-              <span class="text-[10px] font-mono font-bold text-muted">RAM: {bp.ram}</span>
+              <div class="flex items-center gap-2">
+                <span class="badge-brutal bg-panel-alt text-muted !text-[9px]">
+                  {bp.targetEnv}
+                </span>
+                <span class="text-[10px] font-mono font-bold text-muted">RAM: {bp.ram}</span>
+              </div>
             </div>
 
             <div class="flex items-center gap-2.5">
