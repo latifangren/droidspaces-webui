@@ -15,6 +15,7 @@
     Monitor,
     AlertTriangle,
     X,
+    Code,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
@@ -42,17 +43,17 @@
       command: 'apk add --no-cache docker && rc-update add docker boot',
     },
     {
-      id: 'earnapp-node',
-      name: 'EarnApp Passive Farming Node',
-      category: 'Farming',
+      id: 'nodejs-dev',
+      name: 'Node.js & Python Developer Stack',
+      category: 'Development',
       targetEnv: 'Headless Server',
-      icon: Sparkles,
-      color: 'bg-yellow text-black',
-      desc: 'Standalone background bandwidth worker with headless auto-start and wakelock hardening. Runs purely in CLI background.',
-      ram: '256 MB',
-      ports: 'None',
+      icon: Code,
+      color: 'bg-emerald-400 text-black',
+      desc: 'Lightweight headless development runtime with Node.js LTS, Python 3, Git, and build essentials pre-configured for microservices.',
+      ram: '512 MB',
+      ports: '3000, 8000',
       distroReq: 'debian-12',
-      command: 'wget -qO- https://brightdata.com/earnapp/install.sh | bash',
+      command: 'apt-get update && apt-get install -y nodejs npm python3 python3-pip git build-essential',
     },
     {
       id: 'nginx-web',
