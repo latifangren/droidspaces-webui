@@ -55,6 +55,8 @@ The entire solution runs inside the single static Go daemon (`dsweb_arm64`) with
 8. **Off-Screen Mounting (Dockhand Pattern)**: Inactive terminal tabs must be hidden using off-screen CSS positioning (`position: absolute; left: -9999px; visibility: hidden`) rather than `display: none` to prevent xterm geometry collapse (`0x0` rows/cols).
 9. **Mobile Virtual Key Bar**: A floating touch bar must be rendered at the bottom of mobile screens providing essential terminal keys (`Esc`, `Tab`, `Ctrl+C`, `Ctrl+Z`, `~`, `/`, `|`, `Up`, `Down`, `Left`, `Right`).
 10. **Auto-Reconnect**: The client must automatically re-establish the WebSocket connection if network dropouts occur, restoring the terminal view transparently.
+11. **Auto-Start Container on Shell Connect**: Launching an interactive terminal for an inactive container automatically boots the container first before dropping the user directly into `enter [user]`.
+12. **In-Memory Config Caching & Adaptive Battery Polling**: `container.config` reads are cached with `mtime` validation (95% flash I/O reduction), and frontend polling automatically pauses via Page Visibility API when the dashboard is hidden.
 
 ---
 

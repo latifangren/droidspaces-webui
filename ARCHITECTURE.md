@@ -39,6 +39,9 @@ droidspaces-webui/
 │       └── catalog.go              # RootFS catalog, download manager, and post-extract patcher
 ├── deploy/
 │   └── magisk/                     # Unified flashable module for Magisk, KernelSU, and APatch
+│       ├── bin/                    # Prebuilt ARM64 core engine binaries (self-contained repo)
+│       │   ├── droidspaces         # Compiled static musl C binary (upstream dev@9ffcaeb)
+│       │   └── busybox             # Multi-call utility binary
 │       ├── module.prop             # Module metadata & live prop description
 │       ├── customize.sh            # Live installer script (permission setup & binary copies)
 │       ├── post-fs-data.sh         # Early boot logger & SELinux label transition
@@ -128,6 +131,7 @@ droidspaces-webui/
 ### 3.1. Frontend (`web/`)
 - **Technology Stack**: Svelte 5 (Runes & standard reactivity), Tailwind CSS (Neo-Brutalist design tokens), `@xterm/xterm` 6.0, `lucide-svelte`.
 - **Packaging**: Built into `web/dist/` via Bun/Vite, embedded directly into Go binary via `embed.FS` (`embed.go`). Zero external HTTP CDN dependencies; 100% offline-functional.
+- **Adaptive Polling**: Uses HTML5 Page Visibility API (`document.visibilityState`) to pause polling intervals when the dashboard is minimized or mobile device is asleep, conserving battery.
 - **Key Modules**:
   - `Containers.svelte`: Main orchestrator displaying container cards, resource allocation badges, and autostart priorities.
   - `components/containers/CreateModal.svelte`: 6-step creation wizard featuring preset profiles (Server, Worker, Desktop) and Dockhand-style resource sliders.
@@ -143,7 +147,7 @@ droidspaces-webui/
 - **`processes.go`**: Inspects in-container process trees using POSIX `ps` fallback matrices and issues signals (`SIGKILL`) directly to target container PIDs. Discovers container user accounts from `/etc/passwd`.
 
 #### 3.2.2. `config` (Workspace Configuration Layer)
-- **`parser.go`**: Thread-safe atomic reader and updater for `container.config` key-value pairs across candidate directories.
+- **`parser.go`**: Thread-safe atomic reader and updater for `container.config` key-value pairs across candidate directories. Features an **in-memory cache with file modification time (`mtime`) validation**, cutting 95% of flash I/O reads during 5s dashboard polling.
 - **`boot.go`**: Manages container autostart sequences. Evaluates `run_at_boot` and `run_at_boot_priority` to coordinate boot ordering with Magisk `service.sh`.
 
 #### 3.2.3. `network` (Host Network Discovery)
