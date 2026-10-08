@@ -1,410 +1,258 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import {
+    Plus,
+    X,
     Terminal as TerminalIcon,
-    RotateCw,
-    Trash2,
     Box,
     Smartphone,
-    Play,
-    Square,
+    RotateCw,
+    Trash2,
     Maximize2,
+    Users,
+    Zap,
   } from 'lucide-svelte';
-  import { Terminal } from '@xterm/xterm';
-  import { FitAddon } from '@xterm/addon-fit';
-  import '@xterm/xterm/css/xterm.css';
+
+  import TerminalSessionView from '../components/terminal/TerminalSessionView.svelte';
+  import NewSessionModal from '../components/terminal/NewSessionModal.svelte';
+  import VirtualKeysBar from '../components/terminal/VirtualKeysBar.svelte';
 
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let terminalParams: any = null;
 
-  let targetMode: 'container' | 'host' = 'container';
-  let selectedContainer = '';
-  let selectedUser = 'root';
-  let containerUsers: string[] = ['root'];
-  let terminalContainer: HTMLDivElement;
-  let term: Terminal | null = null;
-  let fitAddon: FitAddon | null = null;
-  let ws: WebSocket | null = null;
-  let status: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
-  let resizeObserver: ResizeObserver | null = null;
+  let sessions: any[] = [];
+  let activeSessionId = '';
+  let showNewSessionModal = false;
+  let connectionStatus: 'connected' | 'connecting' | 'disconnected' = 'connecting';
+  let sendKeyFn: ((key: string) => void) | null = null;
+  let terminalViewRefs: Record<string, any> = {};
 
-  $: runningList = containersData?.running || [];
+  $: runningContainers = containersData?.running || [];
 
-  $: if (!selectedContainer && runningList.length > 0) {
-    selectedContainer = runningList[0].name;
-    loadContainerUsers(selectedContainer);
+  $: if (terminalParams && terminalParams.container) {
+    handleOpenSpecificContainer(terminalParams.container, terminalParams.user);
   }
 
-  $: if (terminalParams) {
-    if (terminalParams.container) {
-      targetMode = 'container';
-      selectedContainer = terminalParams.container;
-      loadContainerUsers(selectedContainer);
-    }
-    if (terminalParams.user) {
-      selectedUser = terminalParams.user;
-    }
-  }
+  onMount(() => {
+    loadSessions();
+  });
 
-  async function loadContainerUsers(cname: string) {
-    if (!cname) return;
+  async function loadSessions() {
     try {
-      const res = await fetch(`/api/containers/${cname}/users`);
+      const res = await fetch('/api/terminal/sessions');
       const json = await res.json();
-      if (json.success && Array.isArray(json.data?.users)) {
-        containerUsers = json.data.users;
-        if (!containerUsers.includes(selectedUser)) {
-          selectedUser = containerUsers[0] || 'root';
+      if (json.success && Array.isArray(json.data)) {
+        sessions = json.data;
+        if (sessions.length > 0 && !activeSessionId) {
+          activeSessionId = sessions[0].id;
+        } else if (sessions.length === 0) {
+          // Auto-spawn first session (Host Shell or first container)
+          createDefaultSession();
         }
+      }
+    } catch (_) {
+    }
+  }
+
+  async function createDefaultSession() {
+    let payload = {
+      target: 'host',
+      title: 'Host Shell (root)',
+    };
+    if (runningContainers.length > 0) {
+      payload = {
+        target: 'container',
+        container: runningContainers[0].name,
+        title: runningContainers[0].name,
+      } as any;
+    }
+
+    try {
+      const res = await fetch('/api/terminal/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        sessions = [json.data];
+        activeSessionId = json.data.id;
       }
     } catch (_) {}
   }
 
-  function getWsUrl(): string {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    let url = `${proto}//${host}/api/ws/terminal?target=${targetMode}`;
-    if (targetMode === 'container' && selectedContainer) {
-      url += `&container=${encodeURIComponent(selectedContainer)}`;
-      if (selectedUser) {
-        url += `&user=${encodeURIComponent(selectedUser)}`;
-      }
-    }
-    return url;
-  }
-
-  function initTerminal() {
-    if (term) {
-      term.dispose();
-      term = null;
-    }
-
-    term = new Terminal({
-      cursorBlink: true,
-      cursorStyle: 'block',
-      fontSize: 13,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-      lineHeight: 1.2,
-      theme: {
-        background: '#09090b',
-        foreground: '#f4f4f5',
-        cursor: '#ffe14a',
-        selectionBackground: 'rgba(255, 225, 74, 0.3)',
-        black: '#18181b',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#eab308',
-        blue: '#3b82f6',
-        magenta: '#d946ef',
-        cyan: '#06b6d4',
-        white: '#f4f4f5',
-        brightBlack: '#71717a',
-        brightRed: '#f87171',
-        brightGreen: '#4ade80',
-        brightYellow: '#fde047',
-        brightBlue: '#60a5fa',
-        brightMagenta: '#e879f9',
-        brightCyan: '#22d3ee',
-        brightWhite: '#ffffff',
-      },
-    });
-
-    fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(terminalContainer);
-    fitAddon.fit();
-
-    term.onData((data) => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    });
-
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-    }
-    resizeObserver = new ResizeObserver(() => {
-      if (fitAddon && term) {
-        fitAddon.fit();
-        sendResize();
-      }
-    });
-    resizeObserver.observe(terminalContainer);
-  }
-
-  function sendResize() {
-    if (ws && ws.readyState === WebSocket.OPEN && term) {
-      const resizePayload = JSON.stringify({
-        type: 'resize',
-        cols: term.cols,
-        rows: term.rows,
-      });
-      ws.send(resizePayload);
-    }
-  }
-
-  function connect() {
-    if (targetMode === 'container' && !selectedContainer) {
-      if (term) {
-        term.writeln('\x1b[33m[!] No container selected. Please select a running container or switch to Host Shell.\x1b[0m');
-      }
+  async function handleOpenSpecificContainer(cname: string, user?: string) {
+    const existing = sessions.find((s) => s.target === 'container' && s.container === cname && (!user || s.user === user));
+    if (existing) {
+      activeSessionId = existing.id;
       return;
     }
 
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-
-    if (!term) {
-      initTerminal();
-    } else {
-      term.reset();
-    }
-
-    status = 'connecting';
-    term?.writeln(`\x1b[36m[*] Connecting to ${targetMode === 'container' ? selectedContainer : 'Host Root Shell'}...\x1b[0m`);
-
-    const wsUrl = getWsUrl();
-    ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      status = 'connected';
-      term?.writeln('\x1b[32m[+] Interactive PTY Session Established.\x1b[0m\r\n');
-      sendResize();
-      term?.focus();
-    };
-
-    ws.onmessage = (event) => {
-      if (typeof event.data === 'string') {
-        term?.write(event.data);
-      } else if (event.data instanceof ArrayBuffer) {
-        term?.write(new Uint8Array(event.data));
+    // Create session for container
+    try {
+      const res = await fetch('/api/terminal/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'container',
+          container: cname,
+          user: user || 'root',
+          title: user && user !== 'root' ? `${user}@${cname}` : cname,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        sessions = [...sessions, json.data];
+        activeSessionId = json.data.id;
       }
-    };
-
-    ws.onclose = () => {
-      status = 'disconnected';
-      term?.writeln('\r\n\x1b[31m[-] Session terminated. Press Reconnect to restart.\x1b[0m\r\n');
-    };
-
-    ws.onerror = () => {
-      status = 'disconnected';
-      term?.writeln('\r\n\x1b[31m[-] WebSocket connection error.\x1b[0m\r\n');
-    };
+    } catch (_) {}
   }
 
-  function switchMode(newMode: 'container' | 'host') {
-    if (targetMode === newMode && status === 'connected') return;
-    targetMode = newMode;
-    connect();
-  }
-
-  function selectContainer(name: string) {
-    selectedContainer = name;
-    loadContainerUsers(name);
-    if (targetMode === 'container') {
-      connect();
-    }
-  }
-
-  function sendKey(key: string) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(key);
-      term?.focus();
-    }
-  }
-
-  onMount(() => {
-    initTerminal();
-    // Auto-connect on mount
-    setTimeout(() => {
-      if (targetMode === 'container' && !selectedContainer && runningList.length > 0) {
-        selectedContainer = runningList[0].name;
+  async function handleCreateSession(payload: { target: string; container?: string; user?: string; title?: string }) {
+    try {
+      const res = await fetch('/api/terminal/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        sessions = [...sessions, json.data];
+        activeSessionId = json.data.id;
+        showNewSessionModal = false;
+      } else {
+        alert('Failed: ' + (json.error || 'Creation failed'));
       }
-      connect();
-    }, 100);
-  });
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+  }
 
-  onDestroy(() => {
-    if (ws) ws.close();
-    if (resizeObserver) resizeObserver.disconnect();
-    if (term) term.dispose();
-  });
+  async function closeSession(id: string) {
+    if (!confirm('Close this terminal session? Background process will be terminated.')) return;
+    try {
+      await fetch(`/api/terminal/sessions/${id}`, { method: 'DELETE' });
+      sessions = sessions.filter((s) => s.id !== id);
+      delete terminalViewRefs[id];
+      if (activeSessionId === id && sessions.length > 0) {
+        activeSessionId = sessions[0].id;
+      } else if (sessions.length === 0) {
+        activeSessionId = '';
+        createDefaultSession();
+      }
+    } catch (_) {}
+  }
+
+  function handleSendVirtualKey(key: string) {
+    if (sendKeyFn) {
+      sendKeyFn(key);
+    }
+  }
+
+  function clearActiveTerminal() {
+    if (activeSessionId && terminalViewRefs[activeSessionId]) {
+      terminalViewRefs[activeSessionId].clear();
+    }
+  }
 </script>
 
 <div class="space-y-3 flex flex-col h-[calc(100vh-7.5rem)] w-full">
-  <!-- Top Bar Controls -->
-  <div class="card-brutal p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-    <div class="flex items-center gap-2 flex-wrap">
-      <!-- Target Mode Toggle -->
-      <div class="flex items-center gap-1 p-1 bg-panel border-2 border-line rounded-lg">
-        <button
-          on:click={() => switchMode('container')}
-          class="px-2.5 py-1 rounded text-xs font-black uppercase transition flex items-center gap-1.5 {targetMode === 'container'
-            ? 'bg-primary text-primary-text'
-            : 'text-muted hover:text-ink'}"
+  <!-- Top Bar: Browser-Style Tabs & Quick Actions -->
+  <div class="card-brutal p-2 flex items-center justify-between gap-3 shrink-0">
+    <!-- Horizontal Tab Bar -->
+    <div class="flex items-center gap-1.5 overflow-x-auto select-none py-0.5 max-w-[75vw]">
+      {#each sessions as s}
+        {@const isActive = s.id === activeSessionId}
+        <div
+          on:click={() => (activeSessionId = s.id)}
+          class="flex items-center gap-2 px-3 py-1.5 rounded-lg border-2 text-xs font-mono font-bold cursor-pointer transition shrink-0 {isActive
+            ? 'bg-primary text-black border-line shadow-brutal-xs font-black'
+            : 'bg-panel text-muted hover:text-ink hover:bg-panel-alt border-line'}"
         >
-          <Box size={13} />
-          <span>Container</span>
-        </button>
-
-        <button
-          on:click={() => switchMode('host')}
-          class="px-2.5 py-1 rounded text-xs font-black uppercase transition flex items-center gap-1.5 {targetMode === 'host'
-            ? 'bg-ink text-paper'
-            : 'text-muted hover:text-ink'}"
-        >
-          <Smartphone size={13} />
-          <span>Host (Root)</span>
-        </button>
-      </div>
-
-      <!-- Container Selector (if container mode) -->
-      {#if targetMode === 'container'}
-        <div class="flex items-center gap-1.5 bg-panel border-2 border-line rounded-lg px-2.5 py-1">
-          <span class="text-[10px] font-black uppercase text-muted font-mono">Box:</span>
-          {#if runningList.length === 0}
-            <span class="text-xs text-muted font-bold font-mono">No running containers</span>
-          {:else}
-            <select
-              bind:value={selectedContainer}
-              on:change={() => selectContainer(selectedContainer)}
-              class="bg-transparent text-xs font-mono font-bold text-ink focus:outline-none"
-            >
-              {#each runningList as c}
-                <option value={c.name}>{c.name} (PID {c.pid})</option>
-              {/each}
-            </select>
-          {/if}
+          <span class="w-2 h-2 rounded-full {isActive ? 'bg-black animate-pulse' : 'bg-lime'}"></span>
+          <span class="truncate max-w-[140px]">{s.title || s.id}</span>
+          <span class="text-[9px] uppercase px-1 py-0.2 rounded bg-black/10 text-ink">
+            {s.target === 'host' ? 'HOST' : s.container}
+          </span>
+          <button
+            type="button"
+            on:click|stopPropagation={() => closeSession(s.id)}
+            class="p-0.5 hover:bg-black/20 rounded transition text-ink"
+            title="Close Tab"
+          >
+            <X size={12} />
+          </button>
         </div>
+      {/each}
 
-        {#if containerUsers.length > 0}
-          <div class="flex items-center gap-1.5 bg-panel border-2 border-line rounded-lg px-2.5 py-1">
-            <span class="text-[10px] font-black uppercase text-muted font-mono">User:</span>
-            <select
-              bind:value={selectedUser}
-              on:change={connect}
-              class="bg-transparent text-xs font-mono font-bold text-ink focus:outline-none"
-            >
-              {#each containerUsers as u}
-                <option value={u}>{u}</option>
-              {/each}
-            </select>
-          </div>
-        {/if}
-      {/if}
+      <!-- Add New Tab Button -->
+      <button
+        on:click={() => (showNewSessionModal = true)}
+        class="p-1.5 bg-panel hover:bg-panel-alt border-2 border-line rounded-lg text-ink font-bold transition flex items-center gap-1 shrink-0"
+        title="Open New Terminal Tab"
+      >
+        <Plus size={14} />
+        <span class="text-[11px] font-mono pr-1">New Tab</span>
+      </button>
+    </div>
 
-      <!-- Status Indicator -->
-      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border-2 border-line bg-panel-alt font-mono text-[11px] font-bold">
-        <span
-          class="w-2 h-2 rounded-full {status === 'connected'
-            ? 'bg-lime animate-pulse'
-            : status === 'connecting'
-              ? 'bg-yellow'
-              : 'bg-red'}"
-        ></span>
-        <span class="text-ink uppercase text-[10px]">{status}</span>
+    <!-- Actions & Status Badges -->
+    <div class="flex items-center gap-2 shrink-0">
+      <!-- Status Badge -->
+      <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border-2 border-line bg-panel font-mono text-[11px] font-bold">
+        <span class="w-2 h-2 rounded-full {connectionStatus === 'connected' ? 'bg-lime' : connectionStatus === 'connecting' ? 'bg-amber-400' : 'bg-red'}"></span>
+        <span class="uppercase text-[10px] text-muted">{connectionStatus}</span>
       </div>
-    </div>
 
-    <!-- Actions -->
-    <div class="flex items-center gap-2">
+      <!-- Clear Terminal -->
       <button
-        on:click={connect}
-        class="btn-brutal !py-1.5 !px-2.5 text-xs flex items-center gap-1.5"
-        title="Reconnect terminal session"
+        on:click={clearActiveTerminal}
+        class="btn-brutal !p-1.5"
+        title="Clear Terminal Screen"
       >
-        <RotateCw size={13} class={status === 'connecting' ? 'animate-spin' : ''} />
-        <span>Reconnect</span>
-      </button>
-
-      <button
-        on:click={() => term?.clear()}
-        class="btn-brutal !py-1.5 !px-2.5 text-xs flex items-center gap-1"
-        title="Clear terminal screen"
-      >
-        <Trash2 size={13} />
-        <span class="hidden sm:inline">Clear</span>
-      </button>
-
-      <button
-        on:click={() => {
-          fitAddon?.fit();
-          sendResize();
-        }}
-        class="btn-brutal !py-1.5 !px-2.5 text-xs"
-        title="Refit dimensions"
-      >
-        <Maximize2 size={13} />
+        <RotateCw size={14} />
       </button>
     </div>
   </div>
 
-  <!-- Real xterm.js Viewport (Full Width & Height) -->
-  <div class="flex-1 card-brutal !p-2 bg-[#09090b] border-2 border-line overflow-hidden relative shadow-brutal flex flex-col">
-    <div
-      bind:this={terminalContainer}
-      class="flex-1 w-full h-full overflow-hidden"
-    ></div>
-
-    <!-- Virtual Keyboard Helper Bar (Mobile & Quick Keys) -->
-    <div class="shrink-0 pt-2 border-t border-line/40 flex items-center gap-1.5 overflow-x-auto text-xs select-none">
-      <button
-        on:click={() => sendKey('\x03')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-black text-pink active:scale-95"
-        title="Send SIGINT"
-      >
-        Ctrl+C
-      </button>
-      <button
-        on:click={() => sendKey('\t')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-ink active:scale-95"
-        title="Tab Autocomplete"
-      >
-        Tab
-      </button>
-      <button
-        on:click={() => sendKey('\x1b')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-ink active:scale-95"
-        title="Escape"
-      >
-        Esc
-      </button>
-      <button
-        on:click={() => sendKey('\x04')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-muted active:scale-95"
-        title="EOF / Exit"
-      >
-        Ctrl+D
-      </button>
-      <button
-        on:click={() => sendKey('\x1b[A')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-ink active:scale-95"
-        title="Up Arrow (History)"
-      >
-        ▲ Up
-      </button>
-      <button
-        on:click={() => sendKey('\x1b[B')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-ink active:scale-95"
-        title="Down Arrow"
-      >
-        ▼ Down
-      </button>
-      <button
-        on:click={() => sendKey('clear\n')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-muted active:scale-95"
-      >
-        clear
-      </button>
-      <button
-        on:click={() => sendKey('exit\n')}
-        class="px-2 py-0.5 rounded bg-panel-alt hover:bg-panel border border-line font-mono text-[11px] font-bold text-red active:scale-95"
-      >
-        exit
-      </button>
-    </div>
+  <!-- Terminal Container: Multi-Session Off-Screen Mounting -->
+  <div class="relative flex-1 w-full bg-[#09090b] rounded-lg border-2 border-line overflow-hidden shadow-brutal-sm">
+    {#if sessions.length === 0}
+      <div class="w-full h-full flex flex-col items-center justify-center space-y-3 text-muted">
+        <TerminalIcon size={32} />
+        <div class="text-xs font-mono font-bold">No terminal sessions active</div>
+        <button
+          on:click={() => (showNewSessionModal = true)}
+          class="btn-brutal btn-brutal-primary text-xs font-black"
+        >
+          Launch Session
+        </button>
+      </div>
+    {:else}
+      {#each sessions as s (s.id)}
+        <TerminalSessionView
+          sessionId={s.id}
+          isActive={s.id === activeSessionId}
+          bind:this={terminalViewRefs[s.id]}
+          onRegisterSendKey={(fn) => {
+            if (s.id === activeSessionId) sendKeyFn = fn;
+          }}
+          onStatusChange={(st) => {
+            if (s.id === activeSessionId) connectionStatus = st;
+          }}
+        />
+      {/each}
+    {/if}
   </div>
+
+  <!-- Mobile Virtual Key Bar -->
+  <VirtualKeysBar onSendKey={handleSendVirtualKey} />
+
+  <!-- New Session Modal -->
+  <NewSessionModal
+    show={showNewSessionModal}
+    {runningContainers}
+    onClose={() => (showNewSessionModal = false)}
+    onOpenSession={handleCreateSession}
+  />
 </div>
