@@ -1,0 +1,158 @@
+name: Release Build & Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v1.0.0, v1.0.0-rc1)'
+        required: true
+        default: 'v1.0.0'
+      release_type:
+        description: 'Release Stability'
+        required: true
+        type: choice
+        options:
+          - 'stable'
+          - 'pre-release'
+        default: 'stable'
+      title:
+        description: 'Release Title (leave empty to use tag name)'
+        required: false
+        default: ''
+      notes:
+        description: 'Custom Release Notes / Changelog (optional)'
+        required: false
+        default: ''
+
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Multi-Arch & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve Release Tag & Configuration
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+            IS_PRERELEASE=$([ "${{ github.event.inputs.release_type }}" = "pre-release" ] && echo "true" || echo "false")
+            TITLE="${{ github.event.inputs.title }}"
+            [ -z "$TITLE" ] && TITLE="Droidspaces WebUI $TAG"
+            NOTES="${{ github.event.inputs.notes }}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+            IS_PRERELEASE="${{ github.event.release.prerelease }}"
+            TITLE="${{ github.event.release.name }}"
+            [ -z "$TITLE" ] && TITLE="Droidspaces WebUI $TAG"
+            NOTES="${{ github.event.release.body }}"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "notes=$NOTES" >> $GITHUB_OUTPUT
+
+      - name: Setup Bun Runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build Svelte 5 Frontend
+        working-directory: ./web
+        run: |
+          bun install
+          bun run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Compile Standalone Binaries
+        env:
+          CGO_ENABLED: '0'
+          LDFLAGS: '-s -w'
+        run: |
+          mkdir -p bin
+
+          echo "Compiling Android ARM64 binary..."
+          GOOS=android GOARCH=arm64 go build -ldflags="$LDFLAGS" -o bin/dsweb_arm64 ./cmd/dsweb
+
+          echo "Compiling Linux x86_64 binary..."
+          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o bin/dsweb_linux_amd64 ./cmd/dsweb
+
+          echo "Compiling Windows x86_64 binary..."
+          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o bin/dsweb_windows_amd64.exe ./cmd/dsweb
+
+          chmod +x bin/dsweb_arm64 bin/dsweb_linux_amd64
+
+      - name: Package Unified Flashable Magisk / KernelSU Module
+        run: |
+          TAG="${{ steps.config.outputs.tag }}"
+          MODULE_ZIP="droidspaces-unified-${TAG}.zip"
+
+          rm -rf dist
+          mkdir -p dist/module/bin
+
+          # Copy magisk deployment structure and prebuilt core binaries
+          cp -r deploy/magisk/* dist/module/
+
+          # Ensure Android WebUI binary is placed into module bin
+          cp bin/dsweb_arm64 dist/module/bin/
+
+          # Update module.prop version with tag if available
+          if [ -f dist/module/module.prop ]; then
+            sed -i "s/^version=.*/version=${TAG}/" dist/module/module.prop
+          fi
+
+          # Ensure execute permissions on all binaries and scripts
+          chmod -R 755 dist/module/bin/
+          chmod 755 dist/module/*.sh 2>/dev/null || true
+
+          # Create flashable zip package
+          cd dist/module
+          zip -r "../${MODULE_ZIP}" ./*
+          cd ../..
+
+          echo "Flashable module created: dist/${MODULE_ZIP}"
+
+      - name: Generate SHA256 Checksums
+        run: |
+          TAG="${{ steps.config.outputs.tag }}"
+          MODULE_ZIP="droidspaces-unified-${TAG}.zip"
+
+          cd dist
+          cp ../bin/dsweb_arm64 ./
+          cp ../bin/dsweb_linux_amd64 ./
+          cp ../bin/dsweb_windows_amd64.exe ./
+
+          sha256sum "${MODULE_ZIP}" dsweb_arm64 dsweb_linux_amd64 dsweb_windows_amd64.exe > checksums.txt
+          cat checksums.txt
+          cd ..
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.config.outputs.tag }}
+          name: ${{ steps.config.outputs.title }}
+          body: ${{ steps.config.outputs.notes }}
+          prerelease: ${{ steps.config.outputs.prerelease == 'true' }}
+          draft: false
+          files: |
+            dist/droidspaces-unified-*.zip
+            bin/dsweb_arm64
+            bin/dsweb_linux_amd64
+            bin/dsweb_windows_amd64.exe
+            dist/checksums.txt
