@@ -1,15 +1,16 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"os/exec"
 	"sync"
 
-	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+	"github.com/latifangren/droidspaces-webui/internal/terminal"
 )
 
 var upgrader = websocket.Upgrader{
@@ -24,101 +25,81 @@ type resizeMessage struct {
 	Rows uint16 `json:"rows"`
 }
 
+type wsClientBroadcaster struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (w *wsClientBroadcaster) WriteMessage(messageType int, data []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.conn.WriteMessage(messageType, data)
+}
+
+func generateClientID() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("cli_%x", hex.EncodeToString(b))
+}
+
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[terminal-ws] upgrade failed: %v", err)
+		log.Printf("[terminal-ws] upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
 
-	target := r.URL.Query().Get("target")
-	containerName := r.URL.Query().Get("container")
-	user := r.URL.Query().Get("user")
+	sessionID := r.URL.Query().Get("session")
+	var sess *terminal.Session
 
-	var cmd *exec.Cmd
-	if target == "container" && containerName != "" {
-		args := []string{"--name=" + containerName, "enter"}
-		if user != "" {
-			args = append(args, user)
+	if sessionID != "" {
+		// Reattach to existing persistent session
+		existing, ok := s.termManager.GetSession(sessionID)
+		if !ok {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m[-] Session not found: "+sessionID+"\x1b[0m\r\n"))
+			return
 		}
-		cmd = exec.Command(s.client.BinaryPath(), args...)
+		sess = existing
 	} else {
-		// Host root shell
-		shell := "/system/bin/sh"
-		if _, err := os.Stat(shell); err != nil {
-			shell = "/bin/sh"
+		// Auto-spawn a new persistent session
+		target := r.URL.Query().Get("target")
+		container := r.URL.Query().Get("container")
+		user := r.URL.Query().Get("user")
+		title := r.URL.Query().Get("title")
+
+		created, err := s.termManager.CreateSession(target, container, user, title)
+		if err != nil {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m[-] Failed to initialize PTY: "+err.Error()+"\x1b[0m\r\n"))
+			return
 		}
-		cmd = exec.Command(shell)
+		sess = created
 	}
 
-	cmd.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		"HOME=/root",
-	)
+	clientID := generateClientID()
+	broadcaster := &wsClientBroadcaster{conn: conn}
 
-	ptmx, err := pty.Start(cmd)
-	if err != nil {
-		_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m[-] Failed to initialize PTY: "+err.Error()+"\x1b[0m\r\n"))
-		return
-	}
-	defer func() {
-		_ = ptmx.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-	}()
+	// Attach client: immediately replays the 512 KB buffer and stops idle timer
+	sess.Attach(clientID, broadcaster)
+	defer sess.Detach(clientID)
 
-	_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
-
-	var once sync.Once
-	closeSession := func() {
-		once.Do(func() {
-			_ = ptmx.Close()
-			_ = conn.Close()
-		})
-	}
-
-	// PTY output -> WebSocket
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := ptmx.Read(buf)
-			if err != nil {
-				closeSession()
-				return
-			}
-			if err := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-				closeSession()
-				return
-			}
-		}
-	}()
-
-	// WebSocket input -> PTY
+	// WebSocket input loop -> writes keystrokes into PTY or resizes terminal
 	for {
 		msgType, msg, err := conn.ReadMessage()
 		if err != nil {
-			closeSession()
 			break
 		}
 
 		// Handle resize message
 		if msgType == websocket.TextMessage && len(msg) > 0 && msg[0] == '{' {
 			var rmsg resizeMessage
-			if err := json.Unmarshal(msg, &rmsg); err == nil && rmsg.Type == "resize" && rmsg.Cols > 0 && rmsg.Rows > 0 {
-				_ = pty.Setsize(ptmx, &pty.Winsize{
-					Rows: rmsg.Rows,
-					Cols: rmsg.Cols,
-				})
+			if err := json.Unmarshal(msg, &rmsg); err == nil && rmsg.Type == "resize" {
+				_ = sess.Resize(rmsg.Cols, rmsg.Rows)
 				continue
 			}
 		}
 
-		if _, err := ptmx.Write(msg); err != nil {
-			closeSession()
+		if err := sess.WriteInput(msg); err != nil {
 			break
 		}
 	}

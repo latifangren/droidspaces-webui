@@ -9,20 +9,24 @@ import (
 	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/runner"
+	"github.com/latifangren/droidspaces-webui/internal/terminal"
 	"github.com/latifangren/droidspaces-webui/web"
 )
 
 type Server struct {
-	mux    *http.ServeMux
-	client *runner.Client
-	port   int
+	mux         *http.ServeMux
+	client      *runner.Client
+	termManager *terminal.Manager
+	port        int
 }
 
 func NewServer(port int) *Server {
+	client := runner.NewClient()
 	s := &Server{
-		mux:    http.NewServeMux(),
-		client: runner.NewClient(),
-		port:   port,
+		mux:         http.NewServeMux(),
+		client:      client,
+		termManager: terminal.NewManager(client.BinaryPath()),
+		port:        port,
 	}
 	s.routes()
 	return s
@@ -52,7 +56,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/templates/download", s.handleTemplateDownload)
 	s.mux.HandleFunc("/api/templates/delete", s.handleTemplateDelete)
 
-	// Interactive WebSocket Terminal
+	// Interactive WebSocket Terminal & Persistent Sessions
+	s.mux.HandleFunc("/api/terminal/sessions", s.handleTerminalSessions)
+	s.mux.HandleFunc("/api/terminal/sessions/", s.handleTerminalSessionDelete)
 	s.mux.HandleFunc("/api/ws/terminal", s.handleTerminalWS)
 
 	// Embedded Static Frontend
