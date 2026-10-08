@@ -162,6 +162,31 @@ type CreateSessionRequest struct {
 	User      string `json:"user,omitempty"`
 }
 
+type KernelCheckItem struct {
+	Name      string `json:"name"`
+	Passed    bool   `json:"passed"`
+	Hint      string `json:"hint,omitempty"`
+	HumanDesc string `json:"human_desc,omitempty"`
+}
+
+type KernelCheckGroup struct {
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Required    bool              `json:"required"`
+	PassedCount int               `json:"passed_count"`
+	TotalCount  int               `json:"total_count"`
+	Items       []KernelCheckItem `json:"items"`
+}
+
+type KernelCheckResult struct {
+	Summary           string             `json:"summary"`
+	AllRequiredPassed bool               `json:"all_required_passed"`
+	TotalFeatures     int                `json:"total_features"`
+	PassedFeatures    int                `json:"passed_features"`
+	Groups            []KernelCheckGroup `json:"groups"`
+	RawOutput         string             `json:"raw_output"`
+}
+
 type APIResponse struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data,omitempty"`
