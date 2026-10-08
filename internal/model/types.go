@@ -142,6 +142,26 @@ type SettingsConfig struct {
 	BinaryPath string `json:"binary_path"`
 }
 
+type TerminalSessionInfo struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Target        string `json:"target"` // "container" | "host"
+	Container     string `json:"container,omitempty"`
+	User          string `json:"user,omitempty"`
+	CreatedAt     int64  `json:"created_at"` // Unix timestamp
+	ActiveClients int    `json:"active_clients"`
+	Cols          uint16 `json:"cols"`
+	Rows          uint16 `json:"rows"`
+	IsRunning     bool   `json:"is_running"`
+}
+
+type CreateSessionRequest struct {
+	Title     string `json:"title,omitempty"`
+	Target    string `json:"target"` // "container" | "host"
+	Container string `json:"container,omitempty"`
+	User      string `json:"user,omitempty"`
+}
+
 type APIResponse struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data,omitempty"`
