@@ -15,9 +15,12 @@
   import '@xterm/xterm/css/xterm.css';
 
   export let containersData: any = { total: 0, running: [], stopped: [] };
+  export let terminalParams: any = null;
 
   let targetMode: 'container' | 'host' = 'container';
   let selectedContainer = '';
+  let selectedUser = 'root';
+  let containerUsers: string[] = ['root'];
   let terminalContainer: HTMLDivElement;
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
@@ -29,6 +32,32 @@
 
   $: if (!selectedContainer && runningList.length > 0) {
     selectedContainer = runningList[0].name;
+    loadContainerUsers(selectedContainer);
+  }
+
+  $: if (terminalParams) {
+    if (terminalParams.container) {
+      targetMode = 'container';
+      selectedContainer = terminalParams.container;
+      loadContainerUsers(selectedContainer);
+    }
+    if (terminalParams.user) {
+      selectedUser = terminalParams.user;
+    }
+  }
+
+  async function loadContainerUsers(cname: string) {
+    if (!cname) return;
+    try {
+      const res = await fetch(`/api/containers/${cname}/users`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data?.users)) {
+        containerUsers = json.data.users;
+        if (!containerUsers.includes(selectedUser)) {
+          selectedUser = containerUsers[0] || 'root';
+        }
+      }
+    } catch (_) {}
   }
 
   function getWsUrl(): string {
@@ -37,6 +66,9 @@
     let url = `${proto}//${host}/api/ws/terminal?target=${targetMode}`;
     if (targetMode === 'container' && selectedContainer) {
       url += `&container=${encodeURIComponent(selectedContainer)}`;
+      if (selectedUser) {
+        url += `&user=${encodeURIComponent(selectedUser)}`;
+      }
     }
     return url;
   }
@@ -171,6 +203,7 @@
 
   function selectContainer(name: string) {
     selectedContainer = name;
+    loadContainerUsers(name);
     if (targetMode === 'container') {
       connect();
     }
@@ -246,6 +279,21 @@
             </select>
           {/if}
         </div>
+
+        {#if containerUsers.length > 0}
+          <div class="flex items-center gap-1.5 bg-panel border-2 border-line rounded-lg px-2.5 py-1">
+            <span class="text-[10px] font-black uppercase text-muted font-mono">User:</span>
+            <select
+              bind:value={selectedUser}
+              on:change={connect}
+              class="bg-transparent text-xs font-mono font-bold text-ink focus:outline-none"
+            >
+              {#each containerUsers as u}
+                <option value={u}>{u}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
       {/if}
 
       <!-- Status Indicator -->

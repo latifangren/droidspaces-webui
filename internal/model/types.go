@@ -8,21 +8,24 @@ type ShowResult struct {
 }
 
 type ContainerSummary struct {
-	Name            string  `json:"name"`
-	PID             int     `json:"pid"`
-	OS              string  `json:"os,omitempty"`
-	Hostname        string  `json:"hostname,omitempty"`
-	IP              string  `json:"ip,omitempty"`
-	IP6             string  `json:"ip6,omitempty"`
-	UptimeSec       int64   `json:"uptime_sec,omitempty"`
-	Uptime          string  `json:"uptime,omitempty"`
-	RAMUsedKB       int64   `json:"ram_used_kb,omitempty"`
-	CPUPermill      int64   `json:"cpu_permill,omitempty"`
-	CPUPercent      float64 `json:"cpu_percent,omitempty"`
-	RAMLimitKB      int64   `json:"ram_limit_kb,omitempty"`
-	CPULimitPermill int64   `json:"cpu_limit_permill,omitempty"`
-	Status          string  `json:"status,omitempty"` // "running" | "stopped"
-	RootFS          string  `json:"rootfs,omitempty"`
+	Name              string  `json:"name"`
+	PID               int     `json:"pid"`
+	OS                string  `json:"os,omitempty"`
+	Hostname          string  `json:"hostname,omitempty"`
+	IP                string  `json:"ip,omitempty"`
+	IP6               string  `json:"ip6,omitempty"`
+	UptimeSec         int64   `json:"uptime_sec,omitempty"`
+	Uptime            string  `json:"uptime,omitempty"`
+	RAMUsedKB         int64   `json:"ram_used_kb,omitempty"`
+	CPUPermill        int64   `json:"cpu_permill,omitempty"`
+	CPUPercent        float64 `json:"cpu_percent,omitempty"`
+	RAMLimitKB        int64   `json:"ram_limit_kb,omitempty"`
+	CPULimitPermill   int64   `json:"cpu_limit_permill,omitempty"`
+	Status            string  `json:"status,omitempty"` // "running" | "stopped"
+	RootFS            string  `json:"rootfs,omitempty"`
+	InitSystem        string  `json:"init_system,omitempty"` // "systemd" | "openrc" | "procd" | "unknown"
+	RunAtBoot         bool    `json:"run_at_boot,omitempty"`
+	RunAtBootPriority int     `json:"run_at_boot_priority,omitempty"`
 }
 
 type StartRequest struct {
@@ -56,6 +59,10 @@ type StartRequest struct {
 	Privileged        string   `json:"privileged,omitempty"`
 	AllowSandboxing   bool     `json:"allow_sandboxing,omitempty"` // Docker/Podman support
 	Binds             []string `json:"binds,omitempty"`
+	RunAtBoot         bool     `json:"run_at_boot,omitempty"`
+	RunAtBootPriority int      `json:"run_at_boot_priority,omitempty"`
+	CustomInit        string   `json:"custom_init,omitempty"`
+	EnvVars           []string `json:"env_vars,omitempty"`
 }
 
 type ExecRequest struct {
@@ -67,6 +74,49 @@ type ExecRequest struct {
 type ExecResponse struct {
 	Output   string `json:"output"`
 	ExitCode int    `json:"exit_code"`
+}
+
+type ServiceInfo struct {
+	Name        string `json:"name"`
+	State       string `json:"state"`   // "running", "stopped", "failed", "active", "inactive"
+	Enabled     string `json:"enabled"` // "enabled", "disabled", "masked", "static", "unknown"
+	Description string `json:"description"`
+}
+
+type ServiceActionRequest struct {
+	Service string `json:"service"`
+	Action  string `json:"action"` // "start", "stop", "restart", "enable", "disable", "mask", "unmask"
+}
+
+type ProcessInfo struct {
+	PID     int    `json:"pid"`
+	User    string `json:"user"`
+	CPU     string `json:"cpu"`
+	Memory  string `json:"memory"`
+	Command string `json:"command"`
+}
+
+type KillProcessRequest struct {
+	PID    int `json:"pid"`
+	Signal int `json:"signal,omitempty"` // Default 9 (SIGKILL)
+}
+
+type BootPriorityItem struct {
+	Name              string `json:"name"`
+	RunAtBoot         bool   `json:"run_at_boot"`
+	RunAtBootPriority int    `json:"run_at_boot_priority"`
+	Status            string `json:"status"` // "running" | "stopped"
+}
+
+type UpdateBootPriorityRequest struct {
+	Items []BootPriorityItem `json:"items"`
+}
+
+type NetworkInterfaceInfo struct {
+	Name  string `json:"name"`
+	IP    string `json:"ip,omitempty"`
+	Type  string `json:"type"`  // "wifi", "cellular", "ethernet", "bridge", "other"
+	State string `json:"state"` // "up", "down"
 }
 
 type TemplateInfo struct {

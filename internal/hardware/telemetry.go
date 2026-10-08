@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 type HardwareStats struct {
@@ -97,13 +96,7 @@ func GetStats() HardwareStats {
 	}
 
 	// 5. Storage /data
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs("/data", &stat); err == nil {
-		totalBytes := stat.Blocks * uint64(stat.Bsize)
-		freeBytes := stat.Bavail * uint64(stat.Bsize)
-		s.StorageTotalGB = float64(totalBytes) / (1024 * 1024 * 1024)
-		s.StorageFreeGB = float64(freeBytes) / (1024 * 1024 * 1024)
-	}
+	s.StorageTotalGB, s.StorageFreeGB = getStorageStats("/data")
 
 	return s
 }

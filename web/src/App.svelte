@@ -19,6 +19,7 @@
   let theme = 'dark';
   let colorPalette = 'default';
   let prefillContainer: any = null;
+  let terminalParams: any = null;
   let sidebarCollapsed = false;
 
   function toggleTheme() {
@@ -62,6 +63,9 @@
     currentRoute = route;
     if (route === 'containers' && data) {
       prefillContainer = data;
+    }
+    if (route === 'terminal' && data) {
+      terminalParams = data;
     }
   }
 
@@ -115,7 +119,7 @@
       {:else if currentRoute === 'logs'}
         <Logs />
       {:else if currentRoute === 'terminal'}
-        <Terminal {containersData} />
+        <Terminal {containersData} {terminalParams} />
       {:else if currentRoute === 'templates'}
         <Templates onNavigate={navigate} />
       {:else if currentRoute === 'settings'}

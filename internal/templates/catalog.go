@@ -419,6 +419,8 @@ func StartDownload(templateID string) error {
 		}
 		_ = os.Remove(tmpArchive)
 
+		applyPostExtractFixes(targetDir)
+
 		log.Printf("[templates] Successfully installed template: %s", t.ID)
 
 		downloadLock.Lock()
@@ -429,4 +431,34 @@ func StartDownload(templateID string) error {
 	}()
 
 	return nil
+}
+
+func applyPostExtractFixes(targetDir string) {
+	scriptCandidates := []string{
+		"/data/local/Droidspaces/bin/post_extract_fixes.sh",
+		"/data/adb/modules/droidspaces/post_extract_fixes.sh",
+		"deploy/magisk/post_extract_fixes.sh",
+		"post_extract_fixes.sh",
+	}
+
+	for _, s := range scriptCandidates {
+		if _, err := os.Stat(s); err == nil {
+			log.Printf("[templates] Running post_extract_fixes.sh on %s...", targetDir)
+			cmd := exec.Command("/system/bin/sh", s, targetDir)
+			_ = cmd.Run()
+			return
+		}
+	}
+
+	// Native fallback: configure AID_INET groups in /etc/group and DNS in /etc/resolv.conf
+	grpPath := filepath.Join(targetDir, "etc/group")
+	if data, err := os.ReadFile(grpPath); err == nil {
+		grpStr := string(data)
+		if !strings.Contains(grpStr, ":3003:") {
+			grpStr += "\naid_inet:x:3003:root\naid_net_raw:x:3004:root\naid_net_admin:x:3005:root\n"
+			_ = os.WriteFile(grpPath, []byte(grpStr), 0644)
+		}
+	}
+	resolvPath := filepath.Join(targetDir, "etc/resolv.conf")
+	_ = os.WriteFile(resolvPath, []byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
 }

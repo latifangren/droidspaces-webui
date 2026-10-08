@@ -22,6 +22,14 @@ if [ -f "$MODPATH/bin/busybox" ]; then
     chmod 755 "$DROIDSPACES_DIR/bin/busybox"
 fi
 
+# Install helper scripts into /data/local/Droidspaces/bin/
+for script in post_extract_fixes.sh sparsemgr.sh export_container.sh; do
+    if [ -f "$MODPATH/$script" ]; then
+        cp -f "$MODPATH/$script" "$DROIDSPACES_DIR/bin/$script"
+        chmod 755 "$DROIDSPACES_DIR/bin/$script"
+    fi
+done
+
 # Enable daemon mode flag so core daemon starts on boot
 echo "1" > "$DROIDSPACES_DIR/.daemon_mode"
 
@@ -32,6 +40,9 @@ set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 [ -f "$MODPATH/bin/droidspaces" ] && set_perm "$MODPATH/bin/droidspaces" 0 0 0755
 [ -f "$MODPATH/bin/busybox" ] && set_perm "$MODPATH/bin/busybox" 0 0 0755
 [ -f "$MODPATH/bin/dsweb_arm64" ] && set_perm "$MODPATH/bin/dsweb_arm64" 0 0 0755
+[ -f "$MODPATH/post_extract_fixes.sh" ] && set_perm "$MODPATH/post_extract_fixes.sh" 0 0 0755
+[ -f "$MODPATH/sparsemgr.sh" ] && set_perm "$MODPATH/sparsemgr.sh" 0 0 0755
+[ -f "$MODPATH/export_container.sh" ] && set_perm "$MODPATH/export_container.sh" 0 0 0755
 
 ui_print "- Core C Engine installed."
 ui_print "- Svelte 5 WebUI Dashboard installed."

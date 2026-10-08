@@ -30,7 +30,13 @@ if [ -f bin/busybox_arm64 ]; then
 fi
 
 cd dist/module
-zip -r ../droidspaces-unified-v1.0.0.zip ./* > /dev/null
+if command -v zip >/dev/null 2>&1; then
+  zip -r ../droidspaces-unified-v1.0.0.zip ./* > /dev/null
+elif command -v python >/dev/null 2>&1; then
+  python -c "import shutil; shutil.make_archive('../droidspaces-unified-v1.0.0', 'zip', '.')"
+elif command -v powershell >/dev/null 2>&1; then
+  powershell -Command "Compress-Archive -Path * -DestinationPath ../droidspaces-unified-v1.0.0.zip -Force"
+fi
 cd "$DIR"
 
 echo "=================================================="

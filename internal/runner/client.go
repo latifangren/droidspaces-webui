@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -13,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/latifangren/droidspaces-webui/internal/config"
 	"github.com/latifangren/droidspaces-webui/internal/model"
+	"github.com/latifangren/droidspaces-webui/internal/network"
 )
 
 type Client struct {
@@ -63,12 +64,34 @@ func (c *Client) run(args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func (c *Client) getContainersDirs() []string {
-	return []string{
-		"/data/local/Droidspaces/Containers",
-		"/var/lib/Droidspaces/Containers",
-		"/tmp/droidspaces/Containers",
+// Config Delegation
+func (c *Client) ReadContainerConfig(name string) (map[string]string, error) {
+	return config.ReadContainerConfig(name)
+}
+
+func (c *Client) WriteContainerConfigKeys(name string, updates map[string]string) error {
+	return config.WriteContainerConfigKeys(name, updates)
+}
+
+// Boot Priority Delegation
+func (c *Client) GetBootPriorities() ([]model.BootPriorityItem, error) {
+	show, _ := c.Show()
+	runningMap := make(map[string]bool)
+	if show != nil {
+		for _, r := range show.Running {
+			runningMap[r.Name] = true
+		}
 	}
+	return config.GetBootPriorities(runningMap)
+}
+
+func (c *Client) SetBootPriorities(items []model.BootPriorityItem) error {
+	return config.SetBootPriorities(items)
+}
+
+// Network Delegation
+func (c *Client) ListHostNetworkInterfaces() ([]model.NetworkInterfaceInfo, error) {
+	return network.ListHostNetworkInterfaces()
 }
 
 func (c *Client) Show() (*model.ShowResult, error) {
@@ -102,13 +125,25 @@ func (c *Client) Show() (*model.ShowResult, error) {
 		}
 		if item.Name != "" {
 			seenName[item.Name] = true
+			if cfg, err := config.ReadContainerConfig(item.Name); err == nil {
+				if cfg["run_at_boot"] == "1" || cfg["run_at_boot"] == "true" {
+					item.RunAtBoot = true
+				}
+				if prio, err := strconv.Atoi(cfg["run_at_boot_priority"]); err == nil {
+					item.RunAtBootPriority = prio
+				}
+				if item.RootFS == "" {
+					item.RootFS = cfg["rootfs_path"]
+				}
+			}
+			item.InitSystem = c.DetectInitSystem(item.Name)
 		}
 		dedupedRunning = append(dedupedRunning, item)
 	}
 	res.Running = dedupedRunning
 
 	// Scan workspace Containers directory for stopped containers
-	for _, cdir := range c.getContainersDirs() {
+	for _, cdir := range config.GetContainersDirs() {
 		entries, err := os.ReadDir(cdir)
 		if err != nil {
 			continue
@@ -122,36 +157,25 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				continue
 			}
 
-			// Read container.config
-			cfgPath := filepath.Join(cdir, name, "container.config")
 			stoppedSummary := model.ContainerSummary{
 				Name:   name,
 				Status: "stopped",
 				PID:    0,
 			}
 
-			if f, err := os.Open(cfgPath); err == nil {
-				scanner := bufio.NewScanner(f)
-				for scanner.Scan() {
-					line := strings.TrimSpace(scanner.Text())
-					if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
-						continue
-					}
-					kv := strings.SplitN(line, "=", 2)
-					key := strings.TrimSpace(kv[0])
-					val := strings.TrimSpace(kv[1])
-					switch key {
-					case "hostname":
-						stoppedSummary.Hostname = val
-					case "rootfs_path":
-						stoppedSummary.RootFS = val
-					case "ip":
-						stoppedSummary.IP = val
-					}
+			if cfg, err := config.ReadContainerConfig(name); err == nil {
+				stoppedSummary.Hostname = cfg["hostname"]
+				stoppedSummary.RootFS = cfg["rootfs_path"]
+				stoppedSummary.IP = cfg["ip"]
+				if cfg["run_at_boot"] == "1" || cfg["run_at_boot"] == "true" {
+					stoppedSummary.RunAtBoot = true
 				}
-				f.Close()
+				if prio, err := strconv.Atoi(cfg["run_at_boot_priority"]); err == nil {
+					stoppedSummary.RunAtBootPriority = prio
+				}
 			}
 
+			stoppedSummary.InitSystem = c.DetectInitSystem(name)
 			res.Stopped = append(res.Stopped, stoppedSummary)
 			seenName[name] = true
 		}
@@ -173,6 +197,7 @@ func (c *Client) Info(name string) (map[string]interface{}, error) {
 	}
 	return res, nil
 }
+
 func (c *Client) cleanupRogueConfigs() {
 	dirs := []string{
 		"/data/local/Droidspaces/rootfs",
@@ -204,14 +229,12 @@ func (c *Client) pruneStalePID(name string) {
 			continue
 		}
 
-		// Check if process is dead in /proc
 		procPath := fmt.Sprintf("/proc/%d", pid)
 		if _, err := os.Stat(procPath); err != nil {
 			_ = os.Remove(pidFile)
 			continue
 		}
 
-		// Check container.config inside the process root
 		cfgPath := filepath.Join(procPath, "root", "run", "droidspaces", "container.config")
 		if cfgData, err := os.ReadFile(cfgPath); err == nil {
 			matched := false
@@ -222,11 +245,9 @@ func (c *Client) pruneStalePID(name string) {
 				}
 			}
 			if !matched {
-				// The running PID belongs to a different container!
 				_ = os.Remove(pidFile)
 			}
 		} else {
-			// Not a droidspaces container process
 			_ = os.Remove(pidFile)
 		}
 	}
@@ -236,6 +257,7 @@ func (c *Client) Start(req model.StartRequest) error {
 	c.cleanupRogueConfigs()
 	c.pruneStalePID(req.Name)
 	defer c.cleanupRogueConfigs()
+
 	args := []string{"start", "--name=" + req.Name}
 	if req.RootFS != "" {
 		args = append(args, "--rootfs="+req.RootFS)
@@ -254,6 +276,15 @@ func (c *Client) Start(req model.StartRequest) error {
 	}
 	if req.Gateway != "" {
 		args = append(args, "--gateway="+req.Gateway)
+	}
+	if req.GatewayNet != "" {
+		args = append(args, "--gateway-net="+req.GatewayNet)
+	}
+	if req.GatewayIface != "" {
+		args = append(args, "--gateway-lan-ifname="+req.GatewayIface)
+	}
+	if req.GatewayBridge != "" {
+		args = append(args, "--gateway-bridge="+req.GatewayBridge)
 	}
 	if req.NATIP != "" {
 		args = append(args, "--nat-ip="+req.NATIP)
@@ -312,12 +343,33 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.AllowSandboxing {
 		args = append(args, "--allow-sandboxing")
 	}
+	if req.CustomInit != "" {
+		args = append(args, "--init="+req.CustomInit)
+	}
+	for _, env := range req.EnvVars {
+		args = append(args, "-e", env)
+	}
 	for _, b := range req.Binds {
 		args = append(args, "-B", b)
 	}
 
 	_, err := c.run(args...)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Persist boot settings if specified
+	updates := make(map[string]string)
+	if req.RunAtBoot {
+		updates["run_at_boot"] = "1"
+		updates["run_at_boot_priority"] = strconv.Itoa(req.RunAtBootPriority)
+	} else {
+		updates["run_at_boot"] = "0"
+		updates["run_at_boot_priority"] = "0"
+	}
+	_ = config.WriteContainerConfigKeys(req.Name, updates)
+
+	return nil
 }
 
 func (c *Client) Stop(name string) error {
@@ -331,13 +383,11 @@ func (c *Client) Restart(name string) error {
 }
 
 func (c *Client) Delete(name string) error {
-	// 1. Stop if running
 	_ = c.Stop(name)
 
-	// 2. Remove container workspace directory
 	var lastErr error
 	deleted := false
-	for _, cdir := range c.getContainersDirs() {
+	for _, cdir := range config.GetContainersDirs() {
 		target := filepath.Join(cdir, name)
 		if info, err := os.Stat(target); err == nil && info.IsDir() {
 			if err := os.RemoveAll(target); err != nil {
@@ -347,6 +397,11 @@ func (c *Client) Delete(name string) error {
 			}
 		}
 	}
+
+	for _, pdir := range []string{"/data/local/Droidspaces/Pids", "/var/lib/Droidspaces/Pids"} {
+		_ = os.Remove(filepath.Join(pdir, name+".pid"))
+	}
+
 	if !deleted && lastErr != nil {
 		return lastErr
 	}
@@ -384,6 +439,7 @@ func (c *Client) Exec(container, command, user string) (string, error) {
 		}
 		output += stderr.String()
 	}
+
 	if err != nil {
 		return output, fmt.Errorf("%w: %s", err, output)
 	}
@@ -424,6 +480,7 @@ func (c *Client) ExecHost(command string) (string, error) {
 		}
 		output += stderr.String()
 	}
+
 	if err != nil {
 		return output, fmt.Errorf("%w: %s", err, output)
 	}
