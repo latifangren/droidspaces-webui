@@ -41,16 +41,31 @@
     try {
       const res = await fetch('/api/terminal/sessions');
       const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        sessions = json.data;
-        if (sessions.length > 0 && !activeSessionId) {
-          activeSessionId = sessions[0].id;
-        } else if (sessions.length === 0) {
-          // Auto-spawn first session (Host Shell or first container)
+      if (json.success) {
+        const list = Array.isArray(json.data) ? json.data : [];
+        sessions = list;
+        if (sessions.length > 0) {
+          if (!activeSessionId || !sessions.some((s) => s.id === activeSessionId)) {
+            activeSessionId = sessions[0].id;
+          }
+        } else {
+          activeSessionId = '';
           createDefaultSession();
         }
       }
-    } catch (_) {
+    } catch (_) {}
+  }
+
+  function handleSessionDead(deadId: string) {
+    sessions = sessions.filter((s) => s.id !== deadId);
+    delete terminalViewRefs[deadId];
+    if (activeSessionId === deadId) {
+      if (sessions.length > 0) {
+        activeSessionId = sessions[0].id;
+      } else {
+        activeSessionId = '';
+        createDefaultSession();
+      }
     }
   }
 
@@ -240,6 +255,7 @@
           onStatusChange={(st) => {
             if (s.id === activeSessionId) connectionStatus = st;
           }}
+          onSessionNotFound={(deadId) => handleSessionDead(deadId)}
         />
       {/each}
     {/if}

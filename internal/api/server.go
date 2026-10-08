@@ -25,7 +25,7 @@ func NewServer(port int) *Server {
 	s := &Server{
 		mux:         http.NewServeMux(),
 		client:      client,
-		termManager: terminal.NewManager(client.BinaryPath()),
+		termManager: terminal.NewManager(client),
 		port:        port,
 	}
 	s.routes()

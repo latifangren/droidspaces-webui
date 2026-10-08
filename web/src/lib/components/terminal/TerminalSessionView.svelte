@@ -8,6 +8,7 @@
   export let isActive: boolean;
   export let onRegisterSendKey: ((fn: (key: string) => void) => void) | null = null;
   export let onStatusChange: ((status: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+  export let onSessionNotFound: ((id: string) => void) | null = null;
 
   let terminalContainer: HTMLDivElement;
   let term: Terminal | null = null;
@@ -122,10 +123,25 @@
     };
 
     ws.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        term?.write(new Uint8Array(event.data));
-      } else {
+      let isNotFound = false;
+      if (typeof event.data === 'string') {
         term?.write(event.data);
+        if (event.data.includes('Session not found')) {
+          isNotFound = true;
+        }
+      } else if (event.data instanceof ArrayBuffer) {
+        term?.write(new Uint8Array(event.data));
+      }
+
+      if (isNotFound) {
+        isDestroyed = true;
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+        if (onSessionNotFound) {
+          onSessionNotFound(sessionId);
+        }
       }
     };
 

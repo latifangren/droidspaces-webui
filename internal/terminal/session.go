@@ -110,24 +110,25 @@ func (s *Session) readPTYLoop() {
 // Attach registers a WebSocket client to this session and replays the current output buffer.
 func (s *Session) Attach(clientID string, client Broadcaster) {
 	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return
+	closed := s.closed
+	if !closed {
+		// Cancel idle detach timer when a client reconnects
+		if s.detachTimer != nil {
+			s.detachTimer.Stop()
+			s.detachTimer = nil
+		}
+		s.clients[clientID] = client
 	}
-
-	// Cancel idle detach timer when a client reconnects
-	if s.detachTimer != nil {
-		s.detachTimer.Stop()
-		s.detachTimer = nil
-	}
-
-	s.clients[clientID] = client
 	s.mu.Unlock()
 
 	// Replay buffered scrollback immediately to the joining client
 	replayData := s.Buffer.Bytes()
 	if len(replayData) > 0 {
 		_ = client.WriteMessage(websocket.BinaryMessage, replayData)
+	}
+
+	if closed {
+		_ = client.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m[Process exited]\x1b[0m\r\n"))
 	}
 }
 

@@ -4,27 +4,30 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
+	"github.com/latifangren/droidspaces-webui/internal/runner"
 )
 
 // Manager coordinates all active detached terminal sessions.
 type Manager struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
-	binPath  string
+	runner   *runner.Client
 }
 
 // NewManager creates a global terminal session manager.
-func NewManager(binPath string) *Manager {
+func NewManager(client *runner.Client) *Manager {
 	return &Manager{
 		sessions: make(map[string]*Session),
-		binPath:  binPath,
+		runner:   client,
 	}
 }
 
@@ -32,7 +35,7 @@ func NewManager(binPath string) *Manager {
 func generateSessionID() string {
 	b := make([]byte, 4)
 	_, _ = rand.Read(b)
-	return fmt.Sprintf("ses_%x", hex.EncodeToString(b))
+	return "ses_" + hex.EncodeToString(b)
 }
 
 func (m *Manager) findHostShell() string {
@@ -58,6 +61,11 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 	}
 
 	var cmd *exec.Cmd
+	binPath := "droidspaces"
+	if m.runner != nil {
+		binPath = m.runner.BinaryPath()
+	}
+
 	if target == "host" {
 		sh := m.findHostShell()
 		cmd = exec.Command(sh, "-i")
@@ -68,12 +76,32 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 		if container == "" {
 			return nil, fmt.Errorf("container name is required for container target")
 		}
-		args := []string{"--name=" + container, "run"}
-		if user != "" {
-			args = append(args, "-u", user)
+
+		// Ensure container is running before entering
+		if m.runner != nil {
+			show, err := m.runner.Show()
+			if err == nil {
+				isRunning := false
+				for _, r := range show.Running {
+					if r.Name == container {
+						isRunning = true
+						break
+					}
+				}
+				if !isRunning {
+					log.Printf("[terminal] Auto-starting container %s for terminal session...", container)
+					_ = m.runner.Start(model.StartRequest{Name: container})
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
 		}
-		args = append(args, "sh", "-i")
-		cmd = exec.Command(m.binPath, args...)
+
+		// Droidspaces interactive terminal command is 'enter [user]'
+		args := []string{"--name=" + container, "enter"}
+		if user != "" {
+			args = append(args, user)
+		}
+		cmd = exec.Command(binPath, args...)
 
 		if title == "" {
 			if user != "" && user != "root" {
@@ -94,9 +122,12 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 	sessionID := generateSessionID()
 
 	s, err := NewSession(sessionID, title, target, container, user, cmd, func(closedID string) {
-		m.mu.Lock()
-		delete(m.sessions, closedID)
-		m.mu.Unlock()
+		// Retain session in registry for 5 minutes after process exit so scrollback can still be viewed
+		time.AfterFunc(5*time.Minute, func() {
+			m.mu.Lock()
+			delete(m.sessions, closedID)
+			m.mu.Unlock()
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -122,7 +153,7 @@ func (m *Manager) ListSessions() []model.TerminalSessionInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var list []model.TerminalSessionInfo
+	list := make([]model.TerminalSessionInfo, 0, len(m.sessions))
 	for _, s := range m.sessions {
 		list = append(list, model.TerminalSessionInfo{
 			ID:            s.ID,
