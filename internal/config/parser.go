@@ -7,6 +7,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+)
+
+type configCacheEntry struct {
+	modTime time.Time
+	data    map[string]string
+}
+
+var (
+	cacheMu  sync.RWMutex
+	cfgCache = make(map[string]configCacheEntry)
 )
 
 // GetContainersDirs returns candidate directories where Droidspaces workspaces live.
@@ -18,17 +30,36 @@ func GetContainersDirs() []string {
 	}
 }
 
-// ReadContainerConfig parses key=value from a container's container.config.
+// ReadContainerConfig parses key=value from a container's container.config with in-memory caching.
 func ReadContainerConfig(name string) (map[string]string, error) {
-	cfg := make(map[string]string)
 	for _, cdir := range GetContainersDirs() {
 		cfgPath := filepath.Join(cdir, name, "container.config")
+		stat, err := os.Stat(cfgPath)
+		if err != nil {
+			continue
+		}
+
+		// Fast path: check in-memory cache if file modification time has not changed
+		cacheMu.RLock()
+		entry, found := cfgCache[cfgPath]
+		cacheMu.RUnlock()
+
+		if found && !stat.ModTime().After(entry.modTime) {
+			res := make(map[string]string, len(entry.data))
+			for k, v := range entry.data {
+				res[k] = v
+			}
+			return res, nil
+		}
+
+		// Slow path: parse file and update cache
 		f, err := os.Open(cfgPath)
 		if err != nil {
 			continue
 		}
 		defer f.Close()
 
+		cfg := make(map[string]string)
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -38,12 +69,25 @@ func ReadContainerConfig(name string) (map[string]string, error) {
 			parts := strings.SplitN(line, "=", 2)
 			cfg[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
-		return cfg, nil
+
+		// Store snapshot in memory
+		cacheMu.Lock()
+		cfgCache[cfgPath] = configCacheEntry{
+			modTime: stat.ModTime(),
+			data:    cfg,
+		}
+		cacheMu.Unlock()
+
+		res := make(map[string]string, len(cfg))
+		for k, v := range cfg {
+			res[k] = v
+		}
+		return res, nil
 	}
-	return cfg, fmt.Errorf("container.config not found for %s", name)
+	return nil, fmt.Errorf("container.config not found for %s", name)
 }
 
-// WriteContainerConfigKeys updates or appends key-value pairs in container.config.
+// WriteContainerConfigKeys updates or appends key-value pairs in container.config and invalidates cache.
 func WriteContainerConfigKeys(name string, updates map[string]string) error {
 	var targetPath string
 	for _, cdir := range GetContainersDirs() {
@@ -98,5 +142,12 @@ func WriteContainerConfigKeys(name string, updates map[string]string) error {
 	}
 
 	content := strings.Join(newLines, "\n") + "\n"
-	return os.WriteFile(targetPath, []byte(content), 0644)
+	err := os.WriteFile(targetPath, []byte(content), 0644)
+	if err == nil {
+		// Invalidate cache immediately
+		cacheMu.Lock()
+		delete(cfgCache, targetPath)
+		cacheMu.Unlock()
+	}
+	return err
 }
