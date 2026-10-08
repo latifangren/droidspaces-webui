@@ -3,6 +3,7 @@ package templates
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
@@ -336,15 +337,15 @@ func StartDownload(templateID string) error {
 			Resolver: net.DefaultResolver,
 		}
 
+		tlsConfig := createSecureTLSConfig()
 		client := &http.Client{
 			Transport: &http.Transport{
-				DialContext: dialer.DialContext,
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true,
-				},
+				DialContext:     dialer.DialContext,
+				TLSClientConfig: tlsConfig,
 			},
 			Timeout: 30 * time.Minute,
 		}
+
 
 		downloadURL := resolveDownloadURL(t, client)
 		log.Printf("[templates] Starting download for %s from %s", t.ID, downloadURL)
@@ -461,4 +462,51 @@ func applyPostExtractFixes(targetDir string) {
 	}
 	resolvPath := filepath.Join(targetDir, "etc/resolv.conf")
 	_ = os.WriteFile(resolvPath, []byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
+}
+func createSecureTLSConfig() *tls.Config {
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil || rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	caPaths := []string{
+		"/etc/ssl/certs/ca-certificates.crt",
+		"/etc/pki/tls/certs/ca-bundle.crt",
+		"/etc/ssl/ca-bundle.pem",
+		"/etc/ssl/cert.pem",
+		"/system/etc/security/cacerts",
+		"/apex/com.android.conscrypt/cacerts",
+		"/data/local/Droidspaces/cacert.pem",
+	}
+	for _, caPath := range caPaths {
+		if stat, err := os.Stat(caPath); err == nil {
+			if !stat.IsDir() {
+				if caData, err := os.ReadFile(caPath); err == nil {
+					rootCAs.AppendCertsFromPEM(caData)
+				}
+			} else {
+				if entries, err := os.ReadDir(caPath); err == nil {
+					for _, entry := range entries {
+						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".0") {
+							if certData, err := os.ReadFile(filepath.Join(caPath, entry.Name())); err == nil {
+								rootCAs.AppendCertsFromPEM(certData)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	tlsCfg := &tls.Config{
+		RootCAs:    rootCAs,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	if os.Getenv("DSWEB_INSECURE_TLS") == "1" {
+		log.Printf("[templates] WARNING: InsecureSkipVerify enabled via DSWEB_INSECURE_TLS=1")
+		tlsCfg.InsecureSkipVerify = true
+	}
+
+	return tlsCfg
 }

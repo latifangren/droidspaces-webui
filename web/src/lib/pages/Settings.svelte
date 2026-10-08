@@ -15,8 +15,9 @@
     Copy,
     Cpu,
     Save,
+    KeyRound,
+    AlertCircle,
   } from 'lucide-svelte';
-
   export let statusData: any = {};
   export let onRefresh: () => void;
   export let colorPalette: string = 'default';
@@ -30,6 +31,55 @@
   let showRawCheck = false;
   let copiedRaw = false;
 
+  let currentPassword = '';
+  let newPassword = '';
+  let confirmPassword = '';
+  let changingPassword = false;
+  let pwSuccessMsg = '';
+  let pwErrorMsg = '';
+
+  async function handlePasswordChange() {
+    pwSuccessMsg = '';
+    pwErrorMsg = '';
+
+    if (!currentPassword) {
+      pwErrorMsg = 'Current password is required';
+      return;
+    }
+    if (!newPassword || newPassword.length < 4) {
+      pwErrorMsg = 'New password must be at least 4 characters';
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      pwErrorMsg = 'New passwords do not match';
+      return;
+    }
+
+    changingPassword = true;
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        pwSuccessMsg = 'Password changed successfully!';
+        currentPassword = '';
+        newPassword = '';
+        confirmPassword = '';
+      } else {
+        pwErrorMsg = json.error || 'Failed to change password';
+      }
+    } catch (e: any) {
+      pwErrorMsg = e.message || 'Error communicating with server';
+    } finally {
+      changingPassword = false;
+    }
+  }
   const palettes = [
     { id: 'default', label: 'Retro Pop', color: '#ffe14a', desc: 'Yellow + Pink + Cyan' },
     { id: 'synthwave', label: 'Synthwave', color: '#c538ff', desc: 'Neon Purple + Hot Pink' },
@@ -153,6 +203,77 @@
       </div>
     {/if}
   </div>
+  <!-- Security & Password Card -->
+  <div class="card-brutal p-5 space-y-4">
+    <div class="flex items-center gap-2 border-b-2 border-line pb-3">
+      <KeyRound size={18} class="text-primary" />
+      <h3 class="text-sm font-black uppercase text-ink">Admin Security & Password</h3>
+    </div>
+
+    <div class="space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label for="cur-pass" class="label-brutal">Current Password</label>
+          <input
+            id="cur-pass"
+            type="password"
+            bind:value={currentPassword}
+            placeholder="Default: Droidspaces"
+            class="input-brutal w-full font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label for="new-pass" class="label-brutal">New Password</label>
+          <input
+            id="new-pass"
+            type="password"
+            bind:value={newPassword}
+            placeholder="Enter new password"
+            class="input-brutal w-full font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label for="conf-pass" class="label-brutal">Confirm Password</label>
+          <input
+            id="conf-pass"
+            type="password"
+            bind:value={confirmPassword}
+            placeholder="Re-enter new password"
+            class="input-brutal w-full font-mono text-sm"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 pt-1 flex-wrap">
+        <span class="text-[11px] text-muted">
+          Protects WebUI dashboard, REST endpoints, and WebSocket terminal access.
+        </span>
+        <button
+          on:click={handlePasswordChange}
+          disabled={changingPassword}
+          class="btn-brutal btn-brutal-primary flex items-center justify-center gap-1.5 font-black text-xs"
+        >
+          <Save size={14} />
+          <span>{changingPassword ? 'Updating...' : 'Update Password'}</span>
+        </button>
+      </div>
+
+      {#if pwSuccessMsg}
+        <div class="p-3 rounded-lg bg-lime/10 border-2 border-lime text-lime font-bold text-xs flex items-center gap-2">
+          <Check size={14} />
+          <span>{pwSuccessMsg}</span>
+        </div>
+      {/if}
+
+      {#if pwErrorMsg}
+        <div class="p-3 rounded-lg bg-red/10 border-2 border-red text-red font-bold text-xs flex items-center gap-2">
+          <AlertCircle size={14} />
+          <span>{pwErrorMsg}</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+
 
   <!-- Accent Color Picker -->
   <div class="card-brutal p-5 space-y-4">

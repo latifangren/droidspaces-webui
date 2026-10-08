@@ -87,14 +87,17 @@ func (s *Session) readPTYLoop() {
 			// 1. Append to circular ring buffer for replay
 			_, _ = s.Buffer.Write(chunk)
 
-			// 2. Broadcast to all active attached WebSocket participants
+			// 2. Broadcast to all active attached WebSocket participants without holding lock
 			s.mu.RLock()
-			for cid, client := range s.clients {
-				if err := client.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
-					log.Printf("[terminal:%s] client %s write error: %v", s.ID, cid, err)
-				}
+			activeClients := make([]Broadcaster, 0, len(s.clients))
+			for _, client := range s.clients {
+				activeClients = append(activeClients, client)
 			}
 			s.mu.RUnlock()
+
+			for _, client := range activeClients {
+				_ = client.WriteMessage(websocket.BinaryMessage, chunk)
+			}
 		}
 
 		if err != nil {

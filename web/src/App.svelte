@@ -10,12 +10,14 @@
   import Terminal from './lib/pages/Terminal.svelte';
   import Templates from './lib/pages/Templates.svelte';
   import Settings from './lib/pages/Settings.svelte';
+  import LoginPage from './lib/pages/LoginPage.svelte';
 
+  let isAuthenticated = false;
+  let authChecked = false;
   let currentRoute = 'dashboard';
   let statusData: any = { port: 84 };
   let containersData: any = { total: 0, running: [], stopped: [] };
   let refreshing = false;
-
   let theme = 'dark';
   let colorPalette = 'default';
   let prefillContainer: any = null;
@@ -38,19 +40,52 @@
     localStorage.setItem('ds_color', color);
   }
 
+  async function checkAuth() {
+    try {
+      const res = await fetch('/api/auth/status');
+      const json = await res.json();
+      if (json.success && json.data && json.data.authenticated) {
+        isAuthenticated = true;
+        loadData();
+      } else {
+        isAuthenticated = false;
+      }
+    } catch (_) {
+      isAuthenticated = false;
+    } finally {
+      authChecked = true;
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {}
+    isAuthenticated = false;
+  }
+
   async function loadData() {
+    if (!isAuthenticated) return;
     refreshing = true;
     try {
       const [resStatus, resContainers] = await Promise.all([
-        fetch('/api/status').then((r) => r.json()),
-        fetch('/api/containers').then((r) => r.json()),
+        fetch('/api/status'),
+        fetch('/api/containers'),
       ]);
 
-      if (resStatus.success && resStatus.data) {
-        statusData = resStatus.data;
+      if (resStatus.status === 401 || resContainers.status === 401) {
+        isAuthenticated = false;
+        return;
       }
-      if (resContainers.success && resContainers.data) {
-        containersData = resContainers.data;
+
+      const dataStatus = await resStatus.json();
+      const dataContainers = await resContainers.json();
+
+      if (dataStatus.success && dataStatus.data) {
+        statusData = dataStatus.data;
+      }
+      if (dataContainers.success && dataContainers.data) {
+        containersData = dataContainers.data;
       }
     } catch (e: any) {
       console.error('Failed to load WebUI data:', e);
@@ -82,7 +117,7 @@
       document.documentElement.setAttribute('data-color', savedColor);
     }
 
-    loadData();
+    checkAuth();
 
     let pollInterval: any = null;
 
@@ -117,9 +152,14 @@
     };
   });
 </script>
-
+{#if !authChecked}
+  <div class="h-screen w-screen flex items-center justify-center bg-bg text-ink font-mono font-bold text-sm">
+    <span>Loading Droidspaces...</span>
+  </div>
+{:else if !isAuthenticated}
+  <LoginPage onLoginSuccess={() => { isAuthenticated = true; loadData(); }} />
+{:else}
 <div class="flex h-screen w-screen bg-bg text-ink overflow-hidden">
-  <!-- Desktop Sidebar -->
   <AppSidebar
     {currentRoute}
     collapsed={sidebarCollapsed}
@@ -138,8 +178,8 @@
       onToggleTheme={toggleTheme}
       {colorPalette}
       onSetColor={setColor}
+      onLogout={logout}
     />
-
     <!-- Main Content Area: Edge-to-edge full width without max-w-6xl center constraint -->
     <main class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 w-full">
       {#if currentRoute === 'dashboard'}
@@ -161,3 +201,4 @@
   <!-- Mobile Floating Dock -->
   <FloatingDock {currentRoute} onNavigate={navigate} />
 </div>
+{/if}

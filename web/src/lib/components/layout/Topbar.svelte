@@ -9,9 +9,8 @@
     Flame,
     Cpu,
     Smartphone,
+    LogOut,
   } from 'lucide-svelte';
-
-  export let port: number = 84;
   export let hardware: any = {};
   export let onRefresh: () => void;
   export let refreshing: boolean = false;
@@ -19,9 +18,9 @@
   export let onToggleTheme: () => void;
   export let colorPalette: string = 'default';
   export let onSetColor: (color: string) => void;
+  export let onLogout: (() => void) | undefined = undefined;
 
   let showPaletteMenu = false;
-
   const palettes = [
     { id: 'default', label: 'Retro Pop', color: '#ffe14a' },
     { id: 'synthwave', label: 'Synthwave', color: '#c538ff' },
@@ -180,5 +179,16 @@
     >
       <RefreshCw size={14} class={refreshing ? 'animate-spin' : ''} />
     </button>
+
+    <!-- Logout Button -->
+    {#if onLogout}
+      <button
+        on:click={onLogout}
+        class="btn-brutal !p-1.5 !rounded-lg text-red hover:bg-red/10"
+        title="Sign Out"
+      >
+        <LogOut size={14} />
+      </button>
+    {/if}
   </div>
 </header>

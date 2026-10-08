@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-
+	"github.com/latifangren/droidspaces-webui/internal/auth"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
 	"github.com/latifangren/droidspaces-webui/internal/terminal"
 	"github.com/latifangren/droidspaces-webui/web"
@@ -17,6 +17,7 @@ type Server struct {
 	mux         *http.ServeMux
 	client      *runner.Client
 	termManager *terminal.Manager
+	authMgr     *auth.AuthManager
 	port        int
 }
 
@@ -26,6 +27,7 @@ func NewServer(port int) *Server {
 		mux:         http.NewServeMux(),
 		client:      client,
 		termManager: terminal.NewManager(client),
+		authMgr:     auth.NewAuthManager(),
 		port:        port,
 	}
 	s.routes()
@@ -33,10 +35,28 @@ func NewServer(port int) *Server {
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		// Enforce authentication on all /api/* routes except public auth status and login
+		if strings.HasPrefix(path, "/api/") {
+			if path != "/api/auth/status" && path != "/api/auth/login" {
+				if !s.authMgr.AuthenticateRequest(r) {
+					s.sendJSON(w, http.StatusUnauthorized, nil, "unauthorized")
+					return
+				}
+			}
+		}
+		s.mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) routes() {
+	// Authentication
+	s.mux.HandleFunc("/api/auth/status", s.handleAuthStatus)
+	s.mux.HandleFunc("/api/auth/login", s.handleLogin)
+	s.mux.HandleFunc("/api/auth/logout", s.handleLogout)
+	s.mux.HandleFunc("/api/auth/change-password", s.handleChangePassword)
+
 	// System & Telemetry
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/api/hardware", s.handleHardware)

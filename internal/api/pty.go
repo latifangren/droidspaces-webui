@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/latifangren/droidspaces-webui/internal/terminal"
@@ -15,10 +18,18 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for WebUI
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // Non-browser clients (curl, native apps)
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		// Verify origin host matches request host to prevent CSWSH attacks
+		return strings.EqualFold(u.Host, r.Host)
 	},
 }
-
 type resizeMessage struct {
 	Type string `json:"type"`
 	Cols uint16 `json:"cols"`
@@ -26,14 +37,64 @@ type resizeMessage struct {
 }
 
 type wsClientBroadcaster struct {
-	conn *websocket.Conn
-	mu   sync.Mutex
+	conn      *websocket.Conn
+	sendChan  chan []byte
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+func newWSClientBroadcaster(conn *websocket.Conn) *wsClientBroadcaster {
+	b := &wsClientBroadcaster{
+		conn:     conn,
+		sendChan: make(chan []byte, 256),
+		done:     make(chan struct{}),
+	}
+	go b.writerLoop()
+	return b
+}
+
+func (w *wsClientBroadcaster) writerLoop() {
+	for {
+		select {
+		case msg, ok := <-w.sendChan:
+			if !ok {
+				return
+			}
+			_ = w.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := w.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+				w.Close()
+				return
+			}
+		case <-w.done:
+			return
+		}
+	}
 }
 
 func (w *wsClientBroadcaster) WriteMessage(messageType int, data []byte) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.conn.WriteMessage(messageType, data)
+	select {
+	case <-w.done:
+		return fmt.Errorf("client broadcaster closed")
+	default:
+	}
+
+	copied := make([]byte, len(data))
+	copy(copied, data)
+
+	select {
+	case w.sendChan <- copied:
+		return nil
+	default:
+		// Buffer full: drop chunk to prevent slow client from halting container PTY
+		return fmt.Errorf("slow client buffer overflow")
+	}
+}
+
+func (w *wsClientBroadcaster) Close() {
+	w.closeOnce.Do(func() {
+		close(w.done)
+		_ = w.conn.Close()
+	})
 }
 
 func generateClientID() string {
@@ -77,7 +138,8 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientID := generateClientID()
-	broadcaster := &wsClientBroadcaster{conn: conn}
+	broadcaster := newWSClientBroadcaster(conn)
+	defer broadcaster.Close()
 
 	// Attach client: immediately replays the 512 KB buffer and stops idle timer
 	sess.Attach(clientID, broadcaster)

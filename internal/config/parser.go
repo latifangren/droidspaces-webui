@@ -32,6 +32,10 @@ func GetContainersDirs() []string {
 
 // ReadContainerConfig parses key=value from a container's container.config with in-memory caching.
 func ReadContainerConfig(name string) (map[string]string, error) {
+	if strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+		return nil, fmt.Errorf("invalid container name: %s", name)
+	}
+
 	for _, cdir := range GetContainersDirs() {
 		cfgPath := filepath.Join(cdir, name, "container.config")
 		stat, err := os.Stat(cfgPath)
@@ -57,8 +61,6 @@ func ReadContainerConfig(name string) (map[string]string, error) {
 		if err != nil {
 			continue
 		}
-		defer f.Close()
-
 		cfg := make(map[string]string)
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
@@ -69,8 +71,8 @@ func ReadContainerConfig(name string) (map[string]string, error) {
 			parts := strings.SplitN(line, "=", 2)
 			cfg[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
+		f.Close()
 
-		// Store snapshot in memory
 		cacheMu.Lock()
 		cfgCache[cfgPath] = configCacheEntry{
 			modTime: stat.ModTime(),
@@ -89,6 +91,9 @@ func ReadContainerConfig(name string) (map[string]string, error) {
 
 // WriteContainerConfigKeys updates or appends key-value pairs in container.config and invalidates cache.
 func WriteContainerConfigKeys(name string, updates map[string]string) error {
+	if strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("invalid container name: %s", name)
+	}
 	var targetPath string
 	for _, cdir := range GetContainersDirs() {
 		candidate := filepath.Join(cdir, name, "container.config")
