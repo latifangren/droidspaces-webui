@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
 )
 
@@ -287,4 +288,107 @@ func TestSessionIdleTimerExpiry(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Errorf("idle timer did not expire and close session")
 	}
+}
+
+
+func TestReadPTYLoop(t *testing.T) {
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe failed: %v", err)
+	}
+
+	closedChan := make(chan bool, 1)
+	s := &Session{
+		ID:      "loop-sess",
+		Buffer:  NewRingBuffer(1024),
+		ptmx:    rPipe,
+		clients: make(map[string]Broadcaster),
+		onClose: func(id string) {
+			closedChan <- true
+		},
+	}
+
+	client := &mockBroadcaster{}
+	s.Attach("c1", client)
+
+	// Run readPTYLoop in background
+	go s.readPTYLoop()
+
+	// Write data to pipe
+	testMsg := "hello from pty\n"
+	_, _ = wPipe.Write([]byte(testMsg))
+
+	// Wait briefly for client to receive message
+	time.Sleep(50 * time.Millisecond)
+	client.mu.Lock()
+	hasMsg := len(client.messages) > 0 && bytes.Contains(client.messages[len(client.messages)-1], []byte("hello from pty"))
+	client.mu.Unlock()
+	if !hasMsg {
+		t.Errorf("client did not receive data from readPTYLoop")
+	}
+
+	// Close pipe to trigger EOF and session shutdown
+	_ = wPipe.Close()
+	select {
+	case <-closedChan:
+		// Successfully shutdown on EOF
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("readPTYLoop did not close on EOF")
+	}
+}
+
+func TestCreateSessionContainerValidation(t *testing.T) {
+	client := runner.NewClient()
+	mgr := NewManager(client)
+
+	// Target host with default title
+	_, _ = mgr.CreateSession("host", "", "", "")
+
+	// Target container with unknown container (not running, auto-start attempted)
+	_, err := mgr.CreateSession("container", "not-running-box", "app", "")
+	_ = err
+
+	// Manager without runner
+	mgrNil := NewManager(nil)
+	_, errNil := mgrNil.CreateSession("container", "box-nil", "guest", "")
+	_ = errNil
+
+	// Empty target defaults to container
+	_, err = mgr.CreateSession("", "", "", "")
+	if err == nil {
+		t.Errorf("expected error for empty container name when target is default")
+	}
+}
+
+func TestNewSessionAndCreateSessionMocked(t *testing.T) {
+	origStart := ptyStart
+	origSetsize := ptySetsize
+	defer func() {
+		ptyStart = origStart
+		ptySetsize = origSetsize
+	}()
+
+	rPipe, wPipe, _ := os.Pipe()
+	defer rPipe.Close()
+
+	ptyStart = func(cmd *exec.Cmd) (*os.File, error) {
+		return wPipe, nil
+	}
+	ptySetsize = func(f *os.File, sz *pty.Winsize) error {
+		return nil
+	}
+
+	cmd := exec.Command("echo", "ok")
+	s, err := NewSession("new-mock-sess", "Mock Title", "host", "", "root", cmd, nil)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+	defer s.Close()
+
+	mgr := NewManager(nil)
+	sess, err := mgr.CreateSession("host", "", "root", "Host Shell")
+	if err != nil {
+		t.Fatalf("mgr.CreateSession failed: %v", err)
+	}
+	defer sess.Close()
 }

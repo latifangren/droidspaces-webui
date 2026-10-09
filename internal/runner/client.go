@@ -252,12 +252,13 @@ func (c *Client) cleanupRogueConfigs() {
 	}
 }
 
+var pidsDirs = []string{
+	"/data/local/Droidspaces/Pids",
+	"/var/lib/Droidspaces/Pids",
+}
+
 func (c *Client) pruneStalePID(name string) {
 	c.cleanupRogueConfigs()
-	pidsDirs := []string{
-		"/data/local/Droidspaces/Pids",
-		"/var/lib/Droidspaces/Pids",
-	}
 	for _, pdir := range pidsDirs {
 		pidFile := filepath.Join(pdir, name+".pid")
 		data, err := os.ReadFile(pidFile)
@@ -597,7 +598,7 @@ func (c *Client) Export(name, outputPath string) error {
 }
 
 func (c *Client) ListBackups(name string) ([]model.ContainerBackupInfo, error) {
-	backupsDir := "/data/local/Droidspaces/Backups"
+	_ = os.MkdirAll(backupsDir, 0755)
 	_ = os.MkdirAll(backupsDir, 0755)
 
 	entries, err := os.ReadDir(backupsDir)
@@ -639,12 +640,12 @@ func (c *Client) DeleteBackup(filename string) error {
 	if !strings.HasSuffix(cleanName, ".tar.gz") && !strings.HasSuffix(cleanName, ".tar") {
 		return fmt.Errorf("invalid backup filename")
 	}
-	target := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
+	target := filepath.Join(backupsDir, cleanName)
 	return os.Remove(target)
 }
 
 func (c *Client) ListAllBackups() ([]model.ContainerBackupInfo, error) {
-	backupsDir := "/data/local/Droidspaces/Backups"
+	_ = os.MkdirAll(backupsDir, 0755)
 	_ = os.MkdirAll(backupsDir, 0755)
 
 	entries, err := os.ReadDir(backupsDir)

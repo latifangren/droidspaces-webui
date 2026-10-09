@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestGetStatsDefault(t *testing.T) {
@@ -188,15 +189,21 @@ func TestCPUSamplerFull(t *testing.T) {
 		t.Errorf("expected 0 ticks for rootPid 0, got %d", zeroTicks)
 	}
 
-	// Test StartContainerCPUSampler and GetContainerCPU
+	sampleInterval = 10 * time.Millisecond
+	pass := 0
 	mockFn := func() map[string]int {
+		pass++
+		if pass > 2 {
+			return map[string]int{}
+		}
 		return map[string]int{
 			"test-box": 100,
+			"stopped":  -1,
 		}
 	}
 	StartContainerCPUSampler(mockFn)
+	time.Sleep(150 * time.Millisecond)
 
-	// Verify GetContainerCPU returns a value
 	_ = GetContainerCPU("test-box", 100)
 	_ = GetContainerCPU("unknown", 0)
 }

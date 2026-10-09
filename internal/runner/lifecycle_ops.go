@@ -15,7 +15,10 @@ import (
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
 
-var safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var (
+	safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	backupsDir             = "/data/local/Droidspaces/Backups"
+)
 func generateUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -199,7 +202,7 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return fmt.Errorf("invalid archive format: must be .tar.gz or .tar")
 	}
 
-	backupPath := filepath.Join("/data/local/Droidspaces/Backups", cleanFilename)
+	backupPath := filepath.Join(backupsDir, cleanFilename)
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup archive not found at %s", backupPath)
 	}

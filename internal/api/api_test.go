@@ -9,8 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"os/exec"
 
+	"github.com/creack/pty"
+	"github.com/gorilla/websocket"
 	"github.com/latifangren/droidspaces-webui/internal/model"
+	"github.com/latifangren/droidspaces-webui/internal/terminal"
 )
 
 func setupTestServer(t *testing.T) (*Server, string, string) {
@@ -181,13 +185,16 @@ func TestLogsEndpointsAndAutoTruncate(t *testing.T) {
 		t.Errorf("expected 200 clearing log, got %d", w.Code)
 	}
 
-	// 5. Test malicious log path traversal
+	// 5. Test lines parameter and missing file
+	_ = doRequest(h, token, "GET", "/api/logs?file=test-daemon.log&lines=2", nil)
+	_ = doRequest(h, token, "GET", "/api/logs?file=nonexistent.log", nil)
+	_ = doRequest(h, token, "POST", "/api/logs?file=test-daemon.log&action=unknown", nil)
+
+	// 6. Test malicious log path traversal
 	w = doRequest(h, token, "GET", "/api/logs?file=../../etc/passwd", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for path traversal, got %d", w.Code)
 	}
-
-	// 6. Test RotateAndTruncateLogs
 	bigLog := filepath.Join(logsDir, "big.log")
 	var lineBuf bytes.Buffer
 	for range 3500 {
@@ -416,5 +423,354 @@ func TestKernelCheckParsingAndPtyClient(t *testing.T) {
 	}
 	if res.AllRequiredPassed {
 		t.Errorf("expected AllRequiredPassed to be false due to missing cgroups")
+	}
+}
+
+func TestSettingsAndAllHumanFeatures(t *testing.T) {
+	s, _, token := setupTestServer(t)
+	h := s.Handler()
+
+	// 1. Settings POST valid
+	w := doRequest(h, token, "POST", "/api/settings", model.SettingsConfig{Port: 8095})
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 updating settings port, got %d", w.Code)
+	}
+
+	// 2. Settings POST invalid JSON
+	reqBad := httptest.NewRequest("POST", "/api/settings", bytes.NewBuffer([]byte("{invalid-json")))
+	reqBad.Header.Set("Authorization", "Bearer "+token)
+	wBad := httptest.NewRecorder()
+	h.ServeHTTP(wBad, reqBad)
+	if wBad.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for bad settings json, got %d", wBad.Code)
+	}
+
+	// 3. Settings wrong method
+	wWrong := doRequest(h, token, "DELETE", "/api/settings", nil)
+	if wWrong.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for DELETE settings, got %d", wWrong.Code)
+	}
+
+	// 4. Test all human feature descriptions
+	features := []string{
+		"Root privileges",
+		"Linux version",
+		"PID namespace",
+		"Mount namespace",
+		"UTS namespace",
+		"IPC namespace",
+		"pivot_root syscall",
+		"/proc filesystem",
+		"/sys filesystem",
+		"Seccomp support",
+		"Cgroup v2 support",
+		"ext4 filesystem",
+		"OverlayFS support",
+		"Network namespace",
+		"Bridge device support",
+		"Veth pair support",
+		"Memory limit support",
+		"CPU limit support",
+		"Sandboxing (user namespaces)",
+		"IPv6 NAT support",
+	}
+	for _, feat := range features {
+		desc := getHumanFeatureDesc(feat)
+		if desc == "" {
+			t.Errorf("expected non-empty description for feature %q", feat)
+		}
+	}
+}
+
+func TestServicesAndBackupsRoutes(t *testing.T) {
+	s, _, token := setupTestServer(t)
+	h := s.Handler()
+
+	// 1. Services sub-routes
+	// GET /api/containers/test-box/services
+	_ = doRequest(h, token, "GET", "/api/containers/test-box/services", nil)
+	// POST /api/containers/test-box/services
+	_ = doRequest(h, token, "POST", "/api/containers/test-box/services", map[string]string{
+		"service": "ssh",
+		"action":  "start",
+	})
+	// GET /api/containers/test-box/services/ssh/logs
+	_ = doRequest(h, token, "GET", "/api/containers/test-box/services/ssh/logs", nil)
+
+	// 2. All Backups management
+	// GET /api/backups
+	wList := doRequest(h, token, "GET", "/api/backups", nil)
+	if wList.Code != http.StatusOK {
+		t.Errorf("expected 200 for GET /api/backups, got %d", wList.Code)
+	}
+	// DELETE /api/backups with empty file
+	wDelEmpty := doRequest(h, token, "DELETE", "/api/backups", nil)
+	if wDelEmpty.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty file param on DELETE /api/backups, got %d", wDelEmpty.Code)
+	}
+	// DELETE /api/backups with non-existent file
+	wDelMiss := doRequest(h, token, "DELETE", "/api/backups?file=nonexistent.tar.gz", nil)
+	_ = wDelMiss.Code
+	// POST /api/backups method not allowed
+	wWrong := doRequest(h, token, "POST", "/api/backups", nil)
+	if wWrong.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST /api/backups, got %d", wWrong.Code)
+	}
+
+	// 3. Terminal session delete with valid and invalid IDs
+	wTermDel := doRequest(h, token, "DELETE", "/api/terminal/sessions/ses_notfound", nil)
+	_ = wTermDel.Code
+	wTermBad := doRequest(h, token, "DELETE", "/api/terminal/sessions/", nil)
+	if wTermBad.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty session id delete, got %d", wTermBad.Code)
+	}
+}
+
+func TestWebSocketAndPTYBroadcaster(t *testing.T) {
+	// 1. Test wsClientBroadcaster methods
+	bc := &wsClientBroadcaster{
+		sendChan: make(chan []byte, 10),
+		done:     make(chan struct{}),
+	}
+	_ = bc.WriteMessage(websocket.BinaryMessage, []byte("data"))
+	bc.Close()
+	_ = bc.WriteMessage(websocket.BinaryMessage, []byte("after-close"))
+
+	// 2. Test handleTerminalWS via httptest.Server
+	s, _, token := setupTestServer(t)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	u := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws/terminal?token=" + token + "&session=ses_nonexistent"
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err == nil {
+		defer conn.Close()
+		_, _, _ = conn.ReadMessage()
+	}
+
+	// 3. Test handleTerminalWS with active session and bidirectional I/O
+	rPipe, wPipe, _ := os.Pipe()
+	defer rPipe.Close()
+	defer terminal.MockPTY(
+		func(cmd *exec.Cmd) (*os.File, error) { return wPipe, nil },
+		func(f *os.File, sz *pty.Winsize) error { return nil },
+	)()
+
+	liveSess, err := s.termManager.CreateSession("host", "", "root", "Interactive")
+	if err == nil && liveSess != nil {
+		uLive := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws/terminal?token=" + token + "&session=" + liveSess.ID
+		connLive, _, errDial := websocket.DefaultDialer.Dial(uLive, nil)
+		if errDial == nil {
+			_ = connLive.WriteMessage(websocket.BinaryMessage, []byte("echo live\n"))
+			_ = connLive.WriteMessage(websocket.TextMessage, []byte(`{"type":"resize","cols":100,"rows":30}`))
+			_ = connLive.WriteMessage(websocket.TextMessage, []byte(`{"type":"input","data":"ls -la\n"}`))
+			_ = connLive.WriteMessage(websocket.TextMessage, []byte("exit\n"))
+			_ = connLive.Close()
+		}
+	}
+}
+
+func TestLifecycleRoutesDeep(t *testing.T) {
+	s, tmpDir, token := setupTestServer(t)
+	h := s.Handler()
+	// 1. DELETE /api/containers/{name}
+	_ = doRequest(h, token, "DELETE", "/api/containers/test-del-box", nil)
+
+	// 2. POST /api/containers/{name}/backup
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/backup", nil)
+
+	// 3. POST /api/containers/{name}/backup/delete
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/backup/delete", map[string]string{
+		"filename": "fake_backup.tar.gz",
+	})
+
+	// 4. POST /api/containers/{name}/clone
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/clone", model.CloneRequest{
+		TargetName: "target-clone",
+		AutoStart:  false,
+	})
+
+	// 5. POST /api/containers/{name}/exec
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/exec", model.ExecRequest{
+		Command: "whoami",
+		User:    "root",
+	})
+
+	// 6. POST /api/containers/{name}/export
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/export", map[string]string{
+		"output": filepath.Join(tmpDir, "export.tar.gz"),
+	})
+
+	// 7. Processes kill valid & invalid
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/processes/kill", model.KillProcessRequest{
+		PID:    100,
+		Signal: 9,
+	})
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/processes", nil)
+
+	// 8. Services manage and logs
+	_ = doRequest(h, token, "POST", "/api/containers/test-del-box/services", map[string]string{
+		"service": "ssh",
+		"action":  "start",
+	})
+	_ = doRequest(h, token, "GET", "/api/containers/test-del-box/services/ssh/logs", nil)
+
+	// 9. Backup download real file
+	backupDir := "/data/local/Droidspaces/Backups"
+	_ = os.MkdirAll(backupDir, 0755)
+	_ = os.WriteFile(filepath.Join(backupDir, "dl_test.tar.gz"), []byte("mock-data"), 0644)
+	wDl := doRequest(h, token, "GET", "/api/backups/download?file=dl_test.tar.gz", nil)
+	if wDl.Code != http.StatusOK {
+		t.Errorf("expected 200 downloading backup, got %d", wDl.Code)
+	}
+
+	// 10. POST /api/containers/restore
+	_ = doRequest(h, token, "POST", "/api/containers/restore", model.RestoreRequest{
+		TargetName: "restored-target",
+		Filename:   "dl_test.tar.gz",
+	})
+
+	// 11. Auth input validation branches
+	_ = doRequest(h, token, "POST", "/api/auth/login", map[string]string{"password": ""})
+	_ = doRequest(h, token, "POST", "/api/auth/change-password", map[string]string{"current_password": ""})
+	_ = doRequest(h, token, "POST", "/api/auth/change-password", map[string]string{
+		"current_password": "Droidspaces",
+		"new_password":     "",
+	})
+
+	// 12. Template download invalid template
+	_ = doRequest(h, token, "POST", "/api/templates/download", map[string]string{"id": "unknown-tpl"})
+	_ = doRequest(h, token, "POST", "/api/templates/delete", map[string]string{"id": "unknown-tpl"})
+
+	// 13. Terminal sessions create
+	_ = doRequest(h, token, "POST", "/api/terminal/sessions", model.CreateSessionRequest{
+		Target: "host",
+		Title:  "Shell",
+	})
+}
+
+func TestSystemAndContainerMethodValidations(t *testing.T) {
+	s, tmpDir, token := setupTestServer(t)
+	h := s.Handler()
+
+	// 1. Method Not Allowed validations
+	w3 := doRequest(h, token, "POST", "/api/host/interfaces", nil)
+	if w3.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for POST /api/host/interfaces, got %d", w3.Code)
+	}
+
+	w4 := doRequest(h, token, "DELETE", "/api/boot-priority", nil)
+	if w4.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for DELETE /api/boot-priority, got %d", w4.Code)
+	}
+
+	w6 := doRequest(h, token, "GET", "/api/templates/delete", nil)
+	if w6.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET /api/templates/delete, got %d", w6.Code)
+	}
+
+	w7 := doRequest(h, token, "PUT", "/api/terminal/sessions", nil)
+	if w7.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for PUT /api/terminal/sessions, got %d", w7.Code)
+	}
+
+	w8 := doRequest(h, token, "GET", "/api/terminal/sessions/ses_abc", nil)
+	if w8.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET /api/terminal/sessions/id, got %d", w8.Code)
+	}
+
+	w9 := doRequest(h, token, "PUT", "/api/containers", nil)
+	if w9.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for PUT /api/containers, got %d", w9.Code)
+	}
+
+	// 2. Host exec valid
+	_ = doRequest(h, token, "POST", "/api/host/exec", map[string]string{"command": "echo host-test"})
+
+	// 3. DELETE /api/containers/del-box (length 3, MethodDelete)
+	boxDir := filepath.Join(tmpDir, "Containers", "del-box")
+	_ = os.MkdirAll(boxDir, 0755)
+	wDel := doRequest(h, token, "DELETE", "/api/containers/del-box", nil)
+	if wDel.Code != http.StatusOK {
+		t.Errorf("expected 200 deleting container, got %d", wDel.Code)
+	}
+}
+
+func TestContainerActionErrors(t *testing.T) {
+	s, _, token := setupTestServer(t)
+	h := s.Handler()
+
+	// Start failure
+	_ = doRequest(h, token, "POST", "/api/containers", model.StartRequest{Name: "fail-box"})
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/start", nil)
+
+	// Stop failure
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/stop", nil)
+
+	// Restart failure
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/restart", nil)
+
+	// Clone failure
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/clone", model.CloneRequest{TargetName: "dst"})
+
+	// Exec failure (returns 200 with ExitCode 1)
+	wExec := doRequest(h, token, "POST", "/api/containers/fail-box/exec", model.ExecRequest{Command: "fail"})
+	if wExec.Code != http.StatusOK {
+		t.Errorf("expected 200 for failed exec with exit code, got %d", wExec.Code)
+	}
+
+	// Services manage failure
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/services", map[string]string{
+		"service": "ssh",
+		"action":  "start",
+	})
+
+	// Processes kill failure
+	_ = doRequest(h, token, "POST", "/api/containers/fail-box/processes/kill", model.KillProcessRequest{PID: 10, Signal: 9})
+
+	// Restore failure
+	// Restore failure and validation branches
+	_ = doRequest(h, token, "POST", "/api/containers/restore", model.RestoreRequest{
+		TargetName: "fail-box",
+		Filename:   "dl_test.tar.gz",
+	})
+	wResMethod := doRequest(h, token, "GET", "/api/containers/restore", nil)
+	if wResMethod.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET /api/containers/restore, got %d", wResMethod.Code)
+	}
+	wResNoFile := doRequest(h, token, "POST", "/api/containers/restore", model.RestoreRequest{
+		TargetName: "box",
+		Filename:   "",
+	})
+	if wResNoFile.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for empty restore filename, got %d", wResNoFile.Code)
+	}
+	wResNoTarget := doRequest(h, token, "POST", "/api/containers/restore", model.RestoreRequest{
+		TargetName: "",
+		Filename:   "b.tar.gz",
+	})
+	if wResNoTarget.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 for empty restore target, got %d", wResNoTarget.Code)
+	}
+
+	// Invalid container name on Start
+	_ = doRequest(h, token, "POST", "/api/containers", model.StartRequest{Name: "../bad"})
+
+	// Wrong password on ChangePassword
+	_ = doRequest(h, token, "POST", "/api/auth/change-password", map[string]string{
+		"current_password": "WrongPassword",
+		"new_password":     "ValidNewSecret123",
+	})
+
+	// Malformed JSON bodies on various handlers
+	for _, route := range []string{
+		"/api/containers/test-box/exec",
+		"/api/containers/test-box/clone",
+		"/api/containers/test-box/processes/kill",
+		"/api/containers/restore",
+	} {
+		reqBad := httptest.NewRequest("POST", route, bytes.NewBuffer([]byte("{bad-json")))
+		reqBad.Header.Set("Authorization", "Bearer "+token)
+		wBad := httptest.NewRecorder()
+		h.ServeHTTP(wBad, reqBad)
 	}
 }

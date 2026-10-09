@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
 
@@ -34,11 +36,11 @@ func TestCatalogDetection(t *testing.T) {
 
 	// 1. detectInitFromDir
 	inits := map[string]string{
-		"etc/systemd":        "systemd",
+		"etc/systemd":         "systemd",
 		"lib/systemd/systemd": "systemd",
-		"etc/init.d":         "openrc",
-		"etc/inittab":        "openrc",
-		"etc/unknown":        "init",
+		"etc/init.d":          "openrc",
+		"etc/inittab":         "openrc",
+		"etc/unknown":         "init",
 	}
 	for subPath, expected := range inits {
 		dir := filepath.Join(tmpDir, "test-"+strings.ReplaceAll(subPath, "/", "-"))
@@ -113,6 +115,34 @@ func TestListTemplatesWithLocalFiles(t *testing.T) {
 	}
 }
 
+func TestListTemplatesDefaultCatalogInstalled(t *testing.T) {
+	tmpDir := t.TempDir()
+	orig := os.Getenv("DROIDSPACES_ROOTFS_DIR")
+	defer os.Setenv("DROIDSPACES_ROOTFS_DIR", orig)
+	os.Setenv("DROIDSPACES_ROOTFS_DIR", tmpDir)
+
+	// Matched by ID with rootfs.img
+	debDir := filepath.Join(tmpDir, "debian-12")
+	_ = os.MkdirAll(debDir, 0755)
+	_ = os.WriteFile(filepath.Join(debDir, "rootfs.img"), []byte("img"), 0644)
+
+	// Matched by distro name
+	ubDir := filepath.Join(tmpDir, "ubuntu")
+	_ = os.MkdirAll(ubDir, 0755)
+
+	templates := ListTemplates()
+	var foundDeb bool
+	for _, tpl := range templates {
+		if tpl.ID == "debian-12" && tpl.Installed {
+			foundDeb = true
+			break
+		}
+	}
+	if !foundDeb {
+		t.Errorf("expected debian-12 to be marked installed")
+	}
+}
+
 func TestDeleteTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	orig := os.Getenv("DROIDSPACES_ROOTFS_DIR")
@@ -140,6 +170,13 @@ func TestDeleteTemplate(t *testing.T) {
 	}
 	if _, err := os.Stat(targetImg); !os.IsNotExist(err) {
 		t.Errorf("expected targetImg to be deleted")
+	}
+
+	// Create generic template and delete it
+	genericDir := filepath.Join(tmpDir, "generic-del")
+	_ = os.MkdirAll(genericDir, 0755)
+	if err := DeleteTemplate("generic-del"); err != nil {
+		t.Fatalf("DeleteTemplate generic failed: %v", err)
 	}
 }
 
@@ -169,6 +206,20 @@ func TestJobStatusAndProgressWriter(t *testing.T) {
 }
 
 func TestCreateSecureTLSConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	certFile := filepath.Join(tmpDir, "ca.pem")
+	_ = os.WriteFile(certFile, []byte("fake-cert-pem"), 0644)
+
+	certDir := filepath.Join(tmpDir, "cacerts")
+	_ = os.MkdirAll(certDir, 0755)
+	_ = os.WriteFile(filepath.Join(certDir, "cert1.0"), []byte("android-cert-pem"), 0644)
+
+	origExtra := extraCAPaths
+	extraCAPaths = []string{certFile, certDir}
+	defer func() {
+		extraCAPaths = origExtra
+	}()
+
 	cfg := createSecureTLSConfig()
 	if cfg == nil {
 		t.Fatalf("expected non-nil tls.Config")
@@ -192,6 +243,11 @@ func TestExtractArchiveImg(t *testing.T) {
 	if data, err := os.ReadFile(destImg); err != nil || string(data) != "raw image data" {
 		t.Errorf("rootfs.img content mismatch or error: %v", err)
 	}
+
+	// Extract to invalid target dir
+	badDir := filepath.Join(tmpDir, "bad-file")
+	_ = os.WriteFile(badDir, []byte("xyz"), 0644)
+	_ = extractArchive(fakeImg, filepath.Join(badDir, "sub"), "img")
 }
 
 func TestApplyPostExtractFixes(t *testing.T) {
@@ -215,8 +271,10 @@ func TestResolveDownloadURL(t *testing.T) {
 		t.Errorf("expected direct url %s, got %s", tplNonLXC.URL, u)
 	}
 
-	// 2. Mock LXC index server
-	indexContent := "debian;bookworm;arm64;default;20240101_05:24;/images/debian/bookworm/arm64/default/20240101_05:24/\n"
+	// 2. Mock LXC index server with debian and ubuntu
+	indexContent := "debian;bookworm;arm64;default;20240101_05:24;/images/debian/bookworm/arm64/default/20240101_05:24/\n" +
+		"ubuntu;noble;arm64;default;20240101_05:24;/images/ubuntu/noble/arm64/default/20240101_05:24/\n"
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = fmt.Fprint(w, indexContent)
@@ -227,8 +285,16 @@ func TestResolveDownloadURL(t *testing.T) {
 		URL:    server.URL + "/images.linuxcontainers.org/placeholder",
 		Distro: "debian",
 	}
-
 	_ = resolveDownloadURL(tplLXC, server.Client())
+
+	tplUbuntu := &model.TemplateInfo{
+		URL:    server.URL + "/images.linuxcontainers.org/placeholder",
+		Distro: "ubuntu",
+	}
+	resUb := resolveDownloadURL(tplUbuntu, server.Client())
+	if !strings.Contains(resUb, "noble") {
+		t.Errorf("expected noble in ubuntu resolved url, got %s", resUb)
+	}
 }
 
 func TestStartDownloadValidations(t *testing.T) {
@@ -272,6 +338,7 @@ func TestApplyPostExtractFixesWithExistingGroup(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), ":3003:") {
 		t.Errorf("expected group file to contain AID_INET: %v, %s", err, string(data))
 	}
+	applyPostExtractFixes(tmpDir)
 }
 
 func TestExtractArchiveFailures(t *testing.T) {
@@ -316,14 +383,13 @@ func TestStartDownloadSuccess(t *testing.T) {
 
 	// Wait for background job to finish
 	for range 50 {
-		job, prog, errStr := GetDownloadStatus()
+		job, _, errStr := GetDownloadStatus()
 		if job == "" {
 			if errStr != "" {
 				t.Fatalf("download job failed: %s", errStr)
 			}
 			break
 		}
-		_ = prog
 		time.Sleep(20 * time.Millisecond)
 	}
 
@@ -331,5 +397,59 @@ func TestStartDownloadSuccess(t *testing.T) {
 	destImg := filepath.Join(tmpStorage, testID, "rootfs.img")
 	if _, err := os.Stat(destImg); err != nil {
 		t.Errorf("expected extracted rootfs.img to exist at %s: %v", destImg, err)
+	}
+}
+
+func TestStartDownloadHttpFailure(t *testing.T) {
+	tmpStorage := t.TempDir()
+	origStorage := os.Getenv("DROIDSPACES_ROOTFS_DIR")
+	defer os.Setenv("DROIDSPACES_ROOTFS_DIR", origStorage)
+	os.Setenv("DROIDSPACES_ROOTFS_DIR", tmpStorage)
+
+	tsFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}))
+	defer tsFail.Close()
+
+	origCatalog := make([]model.TemplateInfo, len(defaultCatalog))
+	copy(origCatalog, defaultCatalog)
+	defer func() {
+		defaultCatalog = origCatalog
+	}()
+
+	testID := "test-fail-tpl"
+	defaultCatalog = append(defaultCatalog, model.TemplateInfo{
+		ID:   testID,
+		Name: "Fail Image",
+		URL:  tsFail.URL,
+		Type: "img",
+	})
+
+	if err := StartDownload(testID); err != nil {
+		t.Fatalf("StartDownload failed: %v", err)
+	}
+
+	for range 50 {
+		job, _, _ := GetDownloadStatus()
+		if job == "" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestExtractArchiveSuccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "src")
+	_ = os.MkdirAll(sourceDir, 0755)
+	_ = os.WriteFile(filepath.Join(sourceDir, "file.txt"), []byte("archive-content"), 0644)
+
+	tarFile := filepath.Join(tmpDir, "test.tar.gz")
+	cmd := exec.Command("tar", "-czf", tarFile, "-C", sourceDir, ".")
+	if err := cmd.Run(); err == nil {
+		targetDir := filepath.Join(tmpDir, "dest")
+		if err := extractArchive(tarFile, targetDir, "tar.gz"); err != nil {
+			t.Errorf("extractArchive failed: %v", err)
+		}
 	}
 }

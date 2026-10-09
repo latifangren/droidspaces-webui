@@ -626,13 +626,16 @@ func applyPostExtractFixes(targetDir string) {
 	resolvPath := filepath.Join(targetDir, "etc/resolv.conf")
 	_ = os.WriteFile(resolvPath, []byte("nameserver 1.1.1.1\nnameserver 8.8.8.8\n"), 0644)
 }
+
+var extraCAPaths []string
+
 func createSecureTLSConfig() *tls.Config {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil || rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
 
-	caPaths := []string{
+	caPaths := append([]string{
 		"/etc/ssl/certs/ca-certificates.crt",
 		"/etc/pki/tls/certs/ca-bundle.crt",
 		"/etc/ssl/ca-bundle.pem",
@@ -640,7 +643,7 @@ func createSecureTLSConfig() *tls.Config {
 		"/system/etc/security/cacerts",
 		"/apex/com.android.conscrypt/cacerts",
 		"/data/local/Droidspaces/cacert.pem",
-	}
+	}, extraCAPaths...)
 	for _, caPath := range caPaths {
 		if stat, err := os.Stat(caPath); err == nil {
 			if !stat.IsDir() {

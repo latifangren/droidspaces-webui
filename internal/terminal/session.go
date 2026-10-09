@@ -43,16 +43,32 @@ type Session struct {
 	closed      bool
 	onClose     func(id string)
 }
+var (
+	ptyStart   = pty.Start
+	ptySetsize = pty.Setsize
+)
+
+// MockPTY allows test suites to mock PTY creation.
+func MockPTY(fn func(cmd *exec.Cmd) (*os.File, error), setsize func(f *os.File, sz *pty.Winsize) error) func() {
+	origStart := ptyStart
+	origSetsize := ptySetsize
+	ptyStart = fn
+	ptySetsize = setsize
+	return func() {
+		ptyStart = origStart
+		ptySetsize = origSetsize
+	}
+}
 
 // NewSession starts a process in a PTY and sets up the streaming session.
 func NewSession(id, title, target, container, user string, cmd *exec.Cmd, onClose func(id string)) (*Session, error) {
-	ptmx, err := pty.Start(cmd)
+	ptmx, err := ptyStart(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start pty: %w", err)
 	}
 
 	// Default window size
-	_ = pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
+	_ = ptySetsize(ptmx, &pty.Winsize{Rows: 24, Cols: 80})
 
 	s := &Session{
 		ID:          id,
@@ -177,7 +193,7 @@ func (s *Session) Resize(cols, rows uint16) error {
 
 	s.Cols = cols
 	s.Rows = rows
-	return pty.Setsize(s.ptmx, &pty.Winsize{
+	return ptySetsize(s.ptmx, &pty.Winsize{
 		Rows: rows,
 		Cols: cols,
 	})

@@ -93,7 +93,9 @@ func (w *wsClientBroadcaster) WriteMessage(messageType int, data []byte) error {
 func (w *wsClientBroadcaster) Close() {
 	w.closeOnce.Do(func() {
 		close(w.done)
-		_ = w.conn.Close()
+		if w.conn != nil {
+			_ = w.conn.Close()
+		}
 	})
 }
 

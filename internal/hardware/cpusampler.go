@@ -20,8 +20,8 @@ var (
 	samplerMu   sync.RWMutex
 	prevSamples = make(map[string]containerSample)
 	cpuPercents = make(map[string]float64)
-	samplerOnce sync.Once
-
+	samplerOnce    sync.Once
+	sampleInterval = 2 * time.Second
 	cgroupBaseDir = "/sys/fs/cgroup/droidspaces"
 	procDir       = "/proc"
 )
@@ -41,7 +41,7 @@ func GetContainerCPU(name string, pid int) float64 {
 func StartContainerCPUSampler(getRunningContainers func() map[string]int) {
 	samplerOnce.Do(func() {
 		go func() {
-			ticker := time.NewTicker(2 * time.Second)
+			ticker := time.NewTicker(sampleInterval)
 			for range ticker.C {
 				containers := getRunningContainers()
 				now := time.Now()
