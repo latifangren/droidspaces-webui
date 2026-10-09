@@ -144,6 +144,13 @@ func (c *Client) Show() (*model.ShowResult, error) {
 					rawPorts = cfg["port"]
 				}
 				item.PortMappings = ParsePortMappings(rawPorts)
+				if item.IP == "" {
+					if staticIP, ok := cfg["static_nat_ip"]; ok && staticIP != "" {
+						item.IP = staticIP
+					} else if cfgIP, ok := cfg["ip"]; ok && cfgIP != "" {
+						item.IP = cfgIP
+					}
+				}
 			}
 			if item.RootFS != "" {
 				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
@@ -179,8 +186,12 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				stoppedSummary.Hostname = cfg["hostname"]
 				stoppedSummary.RootFS = cfg["rootfs_path"]
 				stoppedSummary.IP = cfg["ip"]
+				if stoppedSummary.IP == "" {
+					if staticIP, ok := cfg["static_nat_ip"]; ok && staticIP != "" {
+						stoppedSummary.IP = staticIP
+					}
+				}
 				if cfg["run_at_boot"] == "1" || cfg["run_at_boot"] == "true" {
-					stoppedSummary.RunAtBoot = true
 				}
 				if prio, err := strconv.Atoi(cfg["run_at_boot_priority"]); err == nil {
 					stoppedSummary.RunAtBootPriority = prio
@@ -288,6 +299,19 @@ func (c *Client) Start(req model.StartRequest) error {
 	c.cleanupRogueConfigs()
 	c.pruneStalePID(req.Name)
 	defer c.cleanupRogueConfigs()
+
+	cfg, _ := config.ReadContainerConfig(req.Name)
+	if req.RootFS == "" && cfg != nil {
+		req.RootFS = cfg["rootfs_path"]
+	}
+	if req.CustomInit == "" && cfg != nil && cfg["custom_init"] != "" {
+		req.CustomInit = cfg["custom_init"]
+	}
+	if req.CustomInit == "" && req.RootFS != "" && !strings.HasSuffix(req.RootFS, ".img") {
+		if strings.Contains(strings.ToLower(req.RootFS), "arch") {
+			req.CustomInit = "/bin/bash"
+		}
+	}
 
 	args := []string{"start", "--name=" + req.Name}
 	if req.RootFS != "" {
@@ -397,6 +421,9 @@ func (c *Client) Start(req model.StartRequest) error {
 	} else {
 		updates["run_at_boot"] = "0"
 		updates["run_at_boot_priority"] = "0"
+	}
+	if req.CustomInit != "" {
+		updates["custom_init"] = req.CustomInit
 	}
 	_ = config.WriteContainerConfigKeys(req.Name, updates)
 

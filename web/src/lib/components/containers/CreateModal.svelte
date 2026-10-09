@@ -115,13 +115,13 @@
         const base = tpl.distro || distroId.replace(/^(local-|img-)/, '').split('-')[0];
         name = base + '-01';
       }
-      if (tpl.distro === 'arch' && tpl.type !== 'img') {
+      if ((tpl.distro === 'arch' || distroId.includes('arch')) && tpl.type !== 'img') {
         customInit = '/bin/bash';
       } else {
         customInit = '';
       }
+    }
   }
-
   function applyProfile(profile: 'server' | 'worker' | 'desktop') {
     if (profile === 'server') {
       ramSliderIndex = 3;
