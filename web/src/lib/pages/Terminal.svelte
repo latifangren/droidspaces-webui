@@ -50,7 +50,6 @@
           }
         } else {
           activeSessionId = '';
-          createDefaultSession();
         }
       }
     } catch (_) {}
@@ -64,7 +63,6 @@
         activeSessionId = sessions[0].id;
       } else {
         activeSessionId = '';
-        createDefaultSession();
       }
     }
   }
@@ -233,15 +231,32 @@
   <!-- Terminal Container: Multi-Session Off-Screen Mounting -->
   <div class="relative flex-1 w-full bg-[#09090b] rounded-lg border-2 border-line overflow-hidden shadow-brutal-sm">
     {#if sessions.length === 0}
-      <div class="w-full h-full flex flex-col items-center justify-center space-y-3 text-muted">
-        <TerminalIcon size={32} />
-        <div class="text-xs font-mono font-bold">No terminal sessions active</div>
-        <button
-          on:click={() => (showNewSessionModal = true)}
-          class="btn-brutal btn-brutal-primary text-xs font-black"
-        >
-          Launch Session
-        </button>
+      <div class="w-full h-full flex flex-col items-center justify-center p-6 space-y-4 text-center select-none">
+        <div class="w-14 h-14 rounded-2xl border-2 border-line bg-panel flex items-center justify-center shadow-brutal-sm text-primary">
+          <TerminalIcon size={28} />
+        </div>
+        <div class="space-y-1">
+          <h3 class="text-sm font-black uppercase text-ink">No Active Terminal Session</h3>
+          <p class="text-xs text-muted max-w-sm">Select which environment you would like to open:</p>
+        </div>
+        <div class="flex items-center gap-3 pt-2 flex-wrap justify-center">
+          <button
+            type="button"
+            on:click={() => handleCreateSession({ target: 'host', title: 'Host Shell (root)' })}
+            class="btn-brutal btn-brutal-primary flex items-center gap-2 text-xs font-black"
+          >
+            <Smartphone size={14} />
+            <span>Host Shell (Root)</span>
+          </button>
+          <button
+            type="button"
+            on:click={() => (showNewSessionModal = true)}
+            class="btn-brutal bg-panel hover:bg-panel-alt flex items-center gap-2 text-xs font-black"
+          >
+            <Box size={14} />
+            <span>Select Container Shell...</span>
+          </button>
+        </div>
       </div>
     {:else}
       {#each sessions as s (s.id)}

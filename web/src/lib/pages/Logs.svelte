@@ -12,8 +12,8 @@
     Info,
     Layers,
     Server,
+    Trash2,
   } from 'lucide-svelte';
-
   let logData: any = { files: [], system_files: [], container_files: [] };
   let selectedFile = '';
   let rawLogs = '';
@@ -154,6 +154,25 @@
     a.click();
     URL.revokeObjectURL(url);
   }
+  async function clearCurrentLog() {
+    if (!selectedFile) return;
+    if (!confirm(`Clear all logs in ${selectedFile}?`)) return;
+    try {
+      const token = localStorage.getItem('ds_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`/api/logs?file=${encodeURIComponent(selectedFile)}&action=clear`, {
+        method: 'POST',
+        headers,
+      });
+      const json = await res.json();
+      if (json.success) {
+        rawLogs = '';
+        totalLinesCount = 0;
+      }
+    } catch (_) {}
+  }
+
 </script>
 
 <div class="space-y-4 flex flex-col h-[calc(100vh-7.5rem)] w-full">
@@ -235,6 +254,14 @@
         <Download size={14} />
       </button>
 
+      <!-- Clear Log Button -->
+      <button
+        on:click={clearCurrentLog}
+        class="btn-brutal !p-1.5 text-red hover:bg-red/10"
+        title="Clear log contents"
+      >
+        <Trash2 size={14} />
+      </button>
       <!-- Live / Stick Toggles -->
       <div class="flex items-center gap-2 pl-1 border-l-2 border-line text-[11px] font-mono">
         <label class="flex items-center gap-1 cursor-pointer font-bold select-none text-muted">

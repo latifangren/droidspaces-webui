@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/config"
+	"github.com/latifangren/droidspaces-webui/internal/hardware"
 	"github.com/latifangren/droidspaces-webui/internal/model"
 	"github.com/latifangren/droidspaces-webui/internal/network"
 )
@@ -117,7 +118,8 @@ func (c *Client) Show() (*model.ShowResult, error) {
 			continue
 		}
 		item.Status = "running"
-		if item.CPUPermill > 0 {
+		item.CPUPercent = hardware.GetContainerCPU(item.Name, item.PID)
+		if item.CPUPercent == 0 && item.CPUPermill > 0 {
 			item.CPUPercent = float64(item.CPUPermill) / 10.0
 		}
 		if item.PID > 0 {

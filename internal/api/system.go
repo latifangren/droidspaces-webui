@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/hardware"
@@ -224,104 +222,6 @@ func getHumanFeatureDesc(name string) string {
 	}
 }
 
-func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	logDirs := []string{
-		"/data/local/Droidspaces/Logs",
-		"/var/lib/Droidspaces/Logs",
-		"/data/adb/modules/droidspaces-webui",
-	}
-
-	fileParam := r.URL.Query().Get("file")
-	if fileParam == "" {
-		systemFiles := make(map[string]bool)
-		containerFiles := make(map[string]bool)
-
-		for _, dir := range logDirs {
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				continue
-			}
-			for _, ent := range entries {
-				name := ent.Name()
-				if !ent.IsDir() {
-					if strings.HasSuffix(name, ".log") {
-						systemFiles[name] = true
-					}
-				} else {
-					subDir := filepath.Join(dir, name)
-					for _, target := range []string{"console", "log"} {
-						if _, err := os.Stat(filepath.Join(subDir, target)); err == nil {
-							containerFiles[filepath.Join(name, target)] = true
-						}
-					}
-				}
-			}
-		}
-
-		var sysList []string
-		for f := range systemFiles {
-			sysList = append(sysList, f)
-		}
-		sort.Strings(sysList)
-
-		var cList []string
-		for f := range containerFiles {
-			cList = append(cList, filepath.ToSlash(f))
-		}
-		sort.Strings(cList)
-
-		allFiles := append([]string{}, sysList...)
-		allFiles = append(allFiles, cList...)
-
-		s.sendJSON(w, http.StatusOK, map[string]interface{}{
-			"files":           allFiles,
-			"system_files":    sysList,
-			"container_files": cList,
-		}, "")
-		return
-	}
-
-	if !safeLogPathRegex.MatchString(fileParam) || strings.Contains(fileParam, "..") {
-		s.sendJSON(w, http.StatusBadRequest, nil, "invalid log file path")
-		return
-	}
-	cleanParam := filepath.Clean(filepath.FromSlash(fileParam))
-
-	var targetPath string
-	for _, dir := range logDirs {
-		candidate := filepath.Join(dir, cleanParam)
-		if _, err := os.Stat(candidate); err == nil {
-			targetPath = candidate
-			break
-		}
-	}
-
-	if targetPath == "" {
-		s.sendJSON(w, http.StatusNotFound, nil, "log file not found: "+fileParam)
-		return
-	}
-
-	data, err := os.ReadFile(targetPath)
-	if err != nil {
-		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
-		return
-	}
-
-	lines := strings.Split(string(data), "\n")
-	totalLines := len(lines)
-	limit := 500
-	if len(lines) > limit {
-		lines = lines[len(lines)-limit:]
-	}
-
-	s.sendJSON(w, http.StatusOK, map[string]interface{}{
-		"file":        fileParam,
-		"content":     strings.Join(lines, "\n"),
-		"total_lines": totalLines,
-		"shown_lines": len(lines),
-		"size_bytes":  len(data),
-	}, "")
-}
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -340,8 +240,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		if cfg.Port > 0 && cfg.Port < 65535 {
 			s.port = cfg.Port
 			for _, p := range []string{
-				"/data/adb/modules/droidspaces-webui/port",
 				"/data/local/Droidspaces/webui_port",
+				"/data/adb/modules/droidspaces/port",
+				"/data/adb/modules/droidspaces-webui/port",
 			} {
 				_ = os.WriteFile(p, []byte(fmt.Sprintf("%d\n", cfg.Port)), 0644)
 			}

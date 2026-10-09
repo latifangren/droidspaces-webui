@@ -18,7 +18,7 @@ type ContainerSummary struct {
 	Uptime            string  `json:"uptime,omitempty"`
 	RAMUsedKB         int64   `json:"ram_used_kb,omitempty"`
 	CPUPermill        int64   `json:"cpu_permill,omitempty"`
-	CPUPercent        float64 `json:"cpu_percent,omitempty"`
+	CPUPercent        float64 `json:"cpu_percent"`
 	RAMLimitKB        int64   `json:"ram_limit_kb,omitempty"`
 	CPULimitPermill   int64   `json:"cpu_limit_permill,omitempty"`
 	Status            string  `json:"status,omitempty"` // "running" | "stopped"

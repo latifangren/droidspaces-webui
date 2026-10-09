@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/api"
 )
@@ -20,8 +21,19 @@ func main() {
 		if p, err := strconv.Atoi(envPort); err == nil && p > 0 {
 			port = p
 		}
+	} else if *portFlag == 84 {
+		for _, pf := range []string{
+			"/data/local/Droidspaces/webui_port",
+			"/data/adb/modules/droidspaces/port",
+		} {
+			if data, err := os.ReadFile(pf); err == nil {
+				if p, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && p > 0 {
+					port = p
+					break
+				}
+			}
+		}
 	}
-
 	server := api.NewServer(port)
 	addr := fmt.Sprintf(":%d", port)
 

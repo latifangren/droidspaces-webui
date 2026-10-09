@@ -8,15 +8,50 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/latifangren/droidspaces-webui/internal/config"
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
 
-var safeServiceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.@-]{1,128}$`)
-
+var (
+	safeServiceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.@-]{1,128}$`)
+	initSysCacheMu       sync.RWMutex
+	initSysCache         = make(map[string]string)
+)
 // DetectInitSystem detects whether the container is running systemd, openrc, or procd.
 func (c *Client) DetectInitSystem(name string) string {
+	initSysCacheMu.RLock()
+	cached, found := initSysCache[name]
+	initSysCacheMu.RUnlock()
+	if found && cached != "" && cached != "unknown" {
+		return cached
+	}
+
+	// 1. Fast static inspection of container rootfs (zero IPC overhead)
+	if cfg, err := config.ReadContainerConfig(name); err == nil {
+		rootfs := cfg["rootfs_path"]
+		if rootfs != "" {
+			if _, err := os.Stat(filepath.Join(rootfs, "etc/systemd")); err == nil {
+				c.setInitSysCache(name, "systemd")
+				return "systemd"
+			}
+			if _, err := os.Stat(filepath.Join(rootfs, "lib/systemd")); err == nil {
+				c.setInitSysCache(name, "systemd")
+				return "systemd"
+			}
+			if _, err := os.Stat(filepath.Join(rootfs, "etc/openwrt_release")); err == nil {
+				c.setInitSysCache(name, "procd")
+				return "procd"
+			}
+			if _, err := os.Stat(filepath.Join(rootfs, "etc/init.d")); err == nil {
+				c.setInitSysCache(name, "openrc")
+				return "openrc"
+			}
+		}
+	}
+
+	// 2. Fallback runtime probe only if static inspection is indeterminate
 	checkCmd := "if [ -d /run/systemd/system ]; then echo systemd; " +
 		"elif [ -d /run/openrc ] || [ -f /etc/init.d/openrc ] || [ -x /sbin/rc-service ]; then echo openrc; " +
 		"elif [ -f /etc/openwrt_release ] || [ -x /sbin/procd ]; then echo procd; " +
@@ -29,30 +64,18 @@ func (c *Client) DetectInitSystem(name string) string {
 		res := strings.TrimSpace(out)
 		switch res {
 		case "systemd", "openrc", "procd":
+			c.setInitSysCache(name, res)
 			return res
 		}
 	}
 
-	// Fallback to inspecting stopped container rootfs
-	if cfg, err := config.ReadContainerConfig(name); err == nil {
-		rootfs := cfg["rootfs_path"]
-		if rootfs != "" {
-			if _, err := os.Stat(filepath.Join(rootfs, "etc/systemd")); err == nil {
-				return "systemd"
-			}
-			if _, err := os.Stat(filepath.Join(rootfs, "lib/systemd")); err == nil {
-				return "systemd"
-			}
-			if _, err := os.Stat(filepath.Join(rootfs, "etc/openwrt_release")); err == nil {
-				return "procd"
-			}
-			if _, err := os.Stat(filepath.Join(rootfs, "etc/init.d")); err == nil {
-				return "openrc"
-			}
-		}
-	}
-
 	return "unknown"
+}
+
+func (c *Client) setInitSysCache(name, initSys string) {
+	initSysCacheMu.Lock()
+	initSysCache[name] = initSys
+	initSysCacheMu.Unlock()
 }
 
 // ListServices inspects services inside the container according to its active init system.

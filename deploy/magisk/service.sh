@@ -263,7 +263,10 @@ log "Boot Summary: Daemon: ${DAEMON_STATUS} | ${success} started | ${failed} fai
 # Droidspaces WebUI Dashboard Service
 # -----------------------------------------------------------------------------
 PORT=84
-if [ -f "$MODDIR/port" ]; then
+if [ -f "/data/local/Droidspaces/webui_port" ]; then
+    CONF_PORT=$(${BUSYBOX_BINARY} tr -d '\r\n ' < "/data/local/Droidspaces/webui_port" 2>/dev/null)
+    [ -n "$CONF_PORT" ] && PORT=$CONF_PORT
+elif [ -f "$MODDIR/port" ]; then
     CONF_PORT=$(${BUSYBOX_BINARY} tr -d '\r\n ' < "$MODDIR/port" 2>/dev/null)
     [ -n "$CONF_PORT" ] && PORT=$CONF_PORT
 elif [ -n "$DSWEB_PORT" ]; then

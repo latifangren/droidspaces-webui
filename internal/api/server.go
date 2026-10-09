@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"github.com/latifangren/droidspaces-webui/internal/auth"
+	"github.com/latifangren/droidspaces-webui/internal/hardware"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
 	"github.com/latifangren/droidspaces-webui/internal/terminal"
 	"github.com/latifangren/droidspaces-webui/web"
@@ -31,6 +32,20 @@ func NewServer(port int) *Server {
 		port:        port,
 	}
 	s.routes()
+	StartLogAutoTruncate()
+	hardware.StartContainerCPUSampler(func() map[string]int {
+		show, err := client.Show()
+		if err != nil || show == nil {
+			return nil
+		}
+		res := make(map[string]int)
+		for _, r := range show.Running {
+			if r.PID > 0 && r.Name != "" {
+				res[r.Name] = r.PID
+			}
+		}
+		return res
+	})
 	return s
 }
 
