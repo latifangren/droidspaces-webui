@@ -170,7 +170,9 @@
     const rootfsPath = t.local_path || (storageDir ? `${storageDir}/${t.id}` : '');
     onNavigate('containers', {
       name: `${t.distro}-box`,
-      rootfs: rootfsPath,
+      rootfs: t.type === 'img' ? undefined : rootfsPath,
+      rootfs_img: t.type === 'img' ? rootfsPath : undefined,
+      id: t.id,
     });
   }
 
@@ -185,10 +187,13 @@
 
     const ramDigits = bp.ram.replace(/[^0-9]/g, '');
     const portsVal = bp.ports === 'Direct Tunnel' || bp.ports === 'None' ? '' : bp.ports;
+    const rootfsPath = reqDistro.local_path || `${storageDir}/${reqDistro.id}`;
 
     onNavigate('containers', {
       name: bp.id,
-      rootfs: reqDistro.local_path || `${storageDir}/${reqDistro.id}`,
+      rootfs: reqDistro.type === 'img' ? undefined : rootfsPath,
+      rootfs_img: reqDistro.type === 'img' ? rootfsPath : undefined,
+      id: reqDistro.id,
       memory: ramDigits ? `${ramDigits}M` : '',
       ports: portsVal,
       allow_sandboxing: bp.id.includes('docker'),

@@ -147,23 +147,183 @@ func ListTemplates() []model.TemplateInfo {
 	res := make([]model.TemplateInfo, len(defaultCatalog))
 	copy(res, defaultCatalog)
 
-	for i := range res {
-		targetDir := filepath.Join(storage, res[i].ID)
-		if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
-			res[i].Installed = true
-			if res[i].Type == "img" {
-				imgFile := filepath.Join(targetDir, "rootfs.img")
-				if _, err := os.Stat(imgFile); err == nil {
-					res[i].LocalPath = imgFile
-				} else {
-					res[i].LocalPath = targetDir
-				}
-			} else {
-				res[i].LocalPath = targetDir
+	matchedPaths := make(map[string]bool)
+
+	scanDirs := []string{storage}
+	for _, d := range []string{"/data/local/Droidspaces/rootfs", "/data/adb/droidspaces/rootfs", "/var/lib/Droidspaces/rootfs"} {
+		if d != storage {
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				scanDirs = append(scanDirs, d)
 			}
 		}
 	}
+
+	// 1. Match default catalog templates in scanned rootfs directories
+	for sIdx, sDir := range scanDirs {
+		for i := range res {
+			if res[i].Installed {
+				continue
+			}
+			targetDir := filepath.Join(sDir, res[i].ID)
+			distroDir := filepath.Join(sDir, res[i].Distro)
+
+			chosenDir := ""
+			if info, err := os.Stat(targetDir); err == nil && info.IsDir() {
+				chosenDir = targetDir
+			} else if sIdx == 0 {
+				if info, err := os.Stat(distroDir); err == nil && info.IsDir() {
+					chosenDir = distroDir
+				}
+			}
+
+			if chosenDir != "" {
+				res[i].Installed = true
+				matchedPaths[chosenDir] = true
+				if res[i].Type == "img" {
+					imgFile := filepath.Join(chosenDir, "rootfs.img")
+					if _, err := os.Stat(imgFile); err == nil {
+						res[i].LocalPath = imgFile
+						matchedPaths[imgFile] = true
+					} else {
+						res[i].LocalPath = chosenDir
+					}
+				} else {
+					res[i].LocalPath = chosenDir
+				}
+			}
+		}
+	}
+
+	// 2. Scan for custom / manually unpacked rootfs directories and .img files
+	for _, sDir := range scanDirs {
+		entries, err := os.ReadDir(sDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			fullPath := filepath.Join(sDir, entry.Name())
+			if matchedPaths[fullPath] {
+				continue
+			}
+
+			if entry.IsDir() {
+				matchedPaths[fullPath] = true
+				imgFile := filepath.Join(fullPath, "rootfs.img")
+				isImg := false
+				localPath := fullPath
+				rootfsType := "dir"
+
+				if _, err := os.Stat(imgFile); err == nil {
+					isImg = true
+					localPath = imgFile
+					rootfsType = "img"
+					matchedPaths[imgFile] = true
+				}
+
+				_ = isImg
+				initSys := detectInitFromDir(fullPath)
+				distro := detectDistroFromName(entry.Name())
+
+				res = append(res, model.TemplateInfo{
+					ID:          "local-" + entry.Name(),
+					Name:        formatLocalName(entry.Name()),
+					Distro:      distro,
+					Category:    "custom",
+					Environment: "Local RootFS Store",
+					InitSystem:  initSys,
+					Type:        rootfsType,
+					Installed:   true,
+					LocalPath:   localPath,
+					Description: fmt.Sprintf("Detected RootFS at %s", fullPath),
+				})
+			} else if strings.HasSuffix(strings.ToLower(entry.Name()), ".img") {
+				matchedPaths[fullPath] = true
+				baseName := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+				res = append(res, model.TemplateInfo{
+					ID:          "img-" + baseName,
+					Name:        entry.Name() + " (Disk Image)",
+					Distro:      detectDistroFromName(baseName),
+					Category:    "custom",
+					Environment: "Local RootFS Image",
+					InitSystem:  "init",
+					Type:        "img",
+					Installed:   true,
+					LocalPath:   fullPath,
+					Description: fmt.Sprintf("Detected RootFS image at %s", fullPath),
+				})
+			}
+		}
+	}
+
 	return res
+}
+
+func detectInitFromDir(rootfsDir string) string {
+	if _, err := os.Stat(filepath.Join(rootfsDir, "etc", "systemd")); err == nil {
+		return "systemd"
+	}
+	if _, err := os.Stat(filepath.Join(rootfsDir, "lib", "systemd", "systemd")); err == nil {
+		return "systemd"
+	}
+	if _, err := os.Stat(filepath.Join(rootfsDir, "etc", "init.d")); err == nil {
+		return "openrc"
+	}
+	if _, err := os.Stat(filepath.Join(rootfsDir, "etc", "inittab")); err == nil {
+		return "openrc"
+	}
+	return "init"
+}
+
+func detectDistroFromName(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "alpine"):
+		return "alpine"
+	case strings.Contains(lower, "ubuntu"):
+		return "ubuntu"
+	case strings.Contains(lower, "debian"):
+		return "debian"
+	case strings.Contains(lower, "arch"):
+		return "arch"
+	case strings.Contains(lower, "kali"):
+		return "kali"
+	case strings.Contains(lower, "fedora"):
+		return "fedora"
+	case strings.Contains(lower, "void"):
+		return "void"
+	case strings.Contains(lower, "openwrt"):
+		return "openwrt"
+	default:
+		return "linux"
+	}
+}
+
+func formatLocalName(name string) string {
+	parts := strings.Split(name, "-")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ") + " (Local Store)"
+}
+
+func DeleteTemplate(templateID string) error {
+	storage := GetStorageDir()
+	targetDir := filepath.Join(storage, templateID)
+	if err := os.RemoveAll(targetDir); err == nil {
+		return nil
+	}
+	if strings.HasPrefix(templateID, "local-") {
+		name := strings.TrimPrefix(templateID, "local-")
+		return os.RemoveAll(filepath.Join(storage, name))
+	}
+	if strings.HasPrefix(templateID, "img-") {
+		name := strings.TrimPrefix(templateID, "img-")
+		_ = os.Remove(filepath.Join(storage, name+".img"))
+		return os.Remove(filepath.Join(storage, name))
+	}
+	return os.RemoveAll(targetDir)
 }
 
 func GetDownloadStatus() (string, string, string) {
@@ -172,11 +332,6 @@ func GetDownloadStatus() (string, string, string) {
 	return activeJob, jobProgress, jobError
 }
 
-func DeleteTemplate(templateID string) error {
-	storage := GetStorageDir()
-	targetDir := filepath.Join(storage, templateID)
-	return os.RemoveAll(targetDir)
-}
 
 func resolveDownloadURL(t *model.TemplateInfo, client *http.Client) string {
 	if !strings.Contains(t.URL, "images.linuxcontainers.org") {

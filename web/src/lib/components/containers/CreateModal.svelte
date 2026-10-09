@@ -12,6 +12,7 @@
     Shield,
     Wifi,
     Sliders,
+    RotateCcw,
   } from 'lucide-svelte';
 
   export let show: boolean = false;
@@ -19,9 +20,12 @@
   export let hostInterfaces: any[] = [];
   export let isSubmitting: boolean = false;
   export let prefill: any = null;
+  export let onRefreshTemplates: (() => Promise<void>) | (() => void) = () => {};
   export let onClose: () => void;
   export let onSubmit: (payload: any) => void;
 
+  let isScanning: boolean = false;
+  let showManualPaths: boolean = false;
   let selectedDistroId = '';
   let name = '';
   let hostname = '';
@@ -68,11 +72,31 @@
 
   $: if (prefill) {
     name = prefill.name || '';
-    rootfs = prefill.local_path || '';
+    rootfs = prefill.rootfs || prefill.local_path || '';
+    rootfsImg = prefill.rootfs_img || '';
     selectedDistroId = prefill.id || '';
     if (prefill.memory) {
       const idx = ramOptions.findIndex((r) => r.value === prefill.memory);
       if (idx !== -1) ramSliderIndex = idx;
+    }
+    if (prefill.ports) {
+      ports = prefill.ports;
+    }
+    if (prefill.allow_sandboxing !== undefined) {
+      allowSandboxing = prefill.allow_sandboxing;
+    }
+  }
+
+  $: installedTemplates = templates.filter((t) => t.installed);
+
+  async function handleScanRootfs() {
+    isScanning = true;
+    try {
+      if (onRefreshTemplates) {
+        await onRefreshTemplates();
+      }
+    } finally {
+      isScanning = false;
     }
   }
 
@@ -88,9 +112,14 @@
         rootfsImg = '';
       }
       if (!name) {
-        name = distroId.split('-')[0] + '-01';
+        const base = tpl.distro || distroId.replace(/^(local-|img-)/, '').split('-')[0];
+        name = base + '-01';
       }
-    }
+      if (tpl.distro === 'arch' && tpl.type !== 'img') {
+        customInit = '/bin/bash';
+      } else {
+        customInit = '';
+      }
   }
 
   function applyProfile(profile: 'server' | 'worker' | 'desktop') {
@@ -180,58 +209,117 @@
             <span class="text-xs font-black uppercase tracking-wider text-ink flex items-center gap-1.5">
               <Box size={14} class="text-primary" /> 1. Select Base RootFS
             </span>
-            {#if templates.length > 0}
-              <span class="text-[10px] text-muted font-mono">{templates.filter((t) => t.installed).length} Installed</span>
-            {/if}
+            <div class="flex items-center gap-2">
+              {#if installedTemplates.length > 0}
+                <span class="text-[10px] text-muted font-mono">{installedTemplates.length} Ready in Store</span>
+              {/if}
+              <button
+                type="button"
+                on:click={handleScanRootfs}
+                disabled={isScanning}
+                class="btn-brutal !py-1 !px-2 text-[10px] flex items-center gap-1 cursor-pointer"
+                title="Scan RootFS Store (/data/local/Droidspaces/rootfs)"
+              >
+                <RotateCcw size={11} class={isScanning ? 'animate-spin text-primary' : ''} />
+                <span>{isScanning ? 'Scanning...' : 'Scan Store'}</span>
+              </button>
+            </div>
           </div>
 
-          {#if templates.length > 0}
+          {#if installedTemplates.length > 0}
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {#each templates.filter((t) => t.installed) as tpl}
-                {@const selected = selectedDistroId === tpl.id}
+              {#each installedTemplates as tpl}
+                {@const selected = selectedDistroId === tpl.id || (rootfs && rootfs === tpl.local_path) || (rootfsImg && rootfsImg === tpl.local_path)}
                 <button
                   type="button"
                   on:click={() => selectDistroCard(tpl.id)}
-                  class="p-3 rounded-lg border-2 text-left transition flex flex-col justify-between {selected
+                  class="p-2.5 rounded-lg border-2 text-left transition flex flex-col justify-between {selected
                     ? 'border-primary bg-primary/10 shadow-brutal-sm ring-2 ring-primary'
                     : 'border-line bg-panel hover:bg-panel-alt'}"
                 >
                   <div class="flex items-center justify-between w-full mb-1">
-                    <span class="font-black text-ink text-xs truncate">{tpl.name}</span>
+                    <span class="font-black text-ink text-xs truncate" title={tpl.name}>{tpl.name}</span>
                     {#if selected}
                       <CheckCircle size={14} class="text-primary shrink-0" />
                     {/if}
                   </div>
-                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono">
+                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono mb-1">
+                    <span class="px-1 py-0.2 rounded bg-surface border border-line text-[9px] uppercase font-bold text-ink">
+                      {tpl.type || 'dir'}
+                    </span>
                     <span>{tpl.init_system || 'init'}</span>
-                    <span>•</span>
-                    <span>{tpl.type}</span>
+                  </div>
+                  <div class="text-[9px] text-muted font-mono truncate w-full" title={tpl.local_path}>
+                    {tpl.local_path}
                   </div>
                 </button>
               {/each}
             </div>
+          {:else}
+            <div class="p-3.5 rounded-lg border-2 border-dashed border-line bg-panel-alt text-center space-y-1.5">
+              <p class="text-ink font-bold text-xs">No RootFS Detected in Store</p>
+              <p class="text-muted text-[11px]">
+                Put rootfs folders or .img files into <code class="font-mono text-ink bg-panel px-1 py-0.5 rounded border border-line">/data/local/Droidspaces/rootfs</code>, or download a template from RootFS Store.
+              </p>
+              <button
+                type="button"
+                on:click={handleScanRootfs}
+                disabled={isScanning}
+                class="btn-brutal !py-1 !px-3 text-xs inline-flex items-center gap-1.5 mt-1"
+              >
+                <RotateCcw size={12} class={isScanning ? 'animate-spin text-primary' : ''} />
+                <span>{isScanning ? 'Scanning RootFS...' : 'Scan RootFS Store'}</span>
+              </button>
+            </div>
           {/if}
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-            <div>
-              <label class="label-brutal">RootFS Directory Path</label>
-              <input
-                type="text"
-                bind:value={rootfs}
-                placeholder="/data/local/Droidspaces/rootfs/alpine"
-                class="input-brutal w-full font-mono text-[11px]"
-              />
-            </div>
-            <div>
-              <label class="label-brutal">RootFS Image (.img) Path</label>
-              <input
-                type="text"
-                bind:value={rootfsImg}
-                placeholder="/data/local/Droidspaces/rootfs/ubuntu.img"
-                class="input-brutal w-full font-mono text-[11px]"
-              />
-            </div>
+          <!-- Selected RootFS indicator and manual path toggle -->
+          <div class="flex items-center justify-between pt-1">
+            {#if rootfs || rootfsImg}
+              <div class="text-[11px] font-mono text-ink flex items-center gap-1.5 truncate">
+                <span class="text-muted">Selected:</span>
+                <span class="font-bold text-primary truncate max-w-[200px] sm:max-w-xs">{rootfs || rootfsImg}</span>
+                <span class="px-1 py-0.2 rounded bg-panel border border-line text-[9px] uppercase font-bold text-muted">
+                  {rootfsImg ? 'IMG' : 'DIR'}
+                </span>
+              </div>
+            {:else}
+              <div class="text-[11px] text-muted italic">Pilih RootFS dari kartu di atas atau ketik manual</div>
+            {/if}
+
+            <button
+              type="button"
+              on:click={() => (showManualPaths = !showManualPaths)}
+              class="text-[11px] text-muted hover:text-ink font-bold underline cursor-pointer shrink-0 ml-auto"
+            >
+              {showManualPaths ? 'Tutup Input Manual' : 'Input Path Manual'}
+            </button>
           </div>
+
+          {#if showManualPaths || installedTemplates.length === 0}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 p-3 rounded-lg border border-line bg-panel/50">
+              <div>
+                <label class="label-brutal">RootFS Directory Path</label>
+                <input
+                  type="text"
+                  bind:value={rootfs}
+                  on:input={() => { if (rootfs) rootfsImg = ''; }}
+                  placeholder="/data/local/Droidspaces/rootfs/alpine"
+                  class="input-brutal w-full font-mono text-[11px]"
+                />
+              </div>
+              <div>
+                <label class="label-brutal">RootFS Image (.img) Path</label>
+                <input
+                  type="text"
+                  bind:value={rootfsImg}
+                  on:input={() => { if (rootfsImg) rootfs = ''; }}
+                  placeholder="/data/local/Droidspaces/rootfs/ubuntu.img"
+                  class="input-brutal w-full font-mono text-[11px]"
+                />
+              </div>
+            </div>
+          {/if}
         </div>
 
         <!-- Step 2: Name & Hostname -->

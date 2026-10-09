@@ -40,7 +40,9 @@
   $: if (prefillContainer) {
     showCreateModal = true;
   }
-
+  $: if (showCreateModal) {
+    loadTemplates();
+  }
   $: allContainers = [
     ...(containersData?.running || []).map((c: any) => ({ ...c, isRunning: true })),
     ...(containersData?.stopped || []).map((c: any) => ({ ...c, isRunning: false })),
@@ -61,8 +63,8 @@
     try {
       const res = await fetch('/api/templates');
       const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        templates = json.data;
+      if (json.success && json.data) {
+        templates = Array.isArray(json.data) ? json.data : (json.data.templates || []);
       }
     } catch (_) {}
   }
@@ -398,6 +400,7 @@
     {hostInterfaces}
     isSubmitting={isSubmittingCreate}
     prefill={prefillContainer}
+    onRefreshTemplates={loadTemplates}
     onClose={() => {
       showCreateModal = false;
       prefillContainer = null;
