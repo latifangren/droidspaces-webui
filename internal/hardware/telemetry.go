@@ -11,12 +11,21 @@ import (
 var (
 	cpuThermalZonePath string
 	cpuThermalOnce     sync.Once
+
+	thermalZoneTypeFmt = "/sys/class/thermal/thermal_zone%d/type"
+	thermalZoneTempFmt = "/sys/class/thermal/thermal_zone%d/temp"
+	batteryTempPath    = "/sys/class/power_supply/battery/temp"
+	batteryCapPath     = "/sys/class/power_supply/battery/capacity"
+	batteryStatusPath  = "/sys/class/power_supply/battery/status"
+	procLoadavgPath    = "/proc/loadavg"
+	procMeminfoPath    = "/proc/meminfo"
+	storagePath        = "/data"
 )
 
 func discoverCPUThermalZone() string {
 	for i := range 40 {
-		typePath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/type", i)
-		tempPath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/temp", i)
+		typePath := fmt.Sprintf(thermalZoneTypeFmt, i)
+		tempPath := fmt.Sprintf(thermalZoneTempFmt, i)
 		if zType, err := os.ReadFile(typePath); err == nil {
 			tStr := strings.ToLower(string(zType))
 			if strings.Contains(tStr, "cpu") || strings.Contains(tStr, "soc") || strings.Contains(tStr, "tsens") {
@@ -47,7 +56,7 @@ func GetStats() HardwareStats {
 	var s HardwareStats
 
 	// 1. Battery Temp & Level
-	if data, err := os.ReadFile("/sys/class/power_supply/battery/temp"); err == nil {
+	if data, err := os.ReadFile(batteryTempPath); err == nil {
 		if t, err := strconv.ParseFloat(strings.TrimSpace(string(data)), 64); err == nil {
 			if t > 200 {
 				s.BatteryTempC = t / 10.0
@@ -57,13 +66,13 @@ func GetStats() HardwareStats {
 		}
 	}
 
-	if data, err := os.ReadFile("/sys/class/power_supply/battery/capacity"); err == nil {
+	if data, err := os.ReadFile(batteryCapPath); err == nil {
 		if cap, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
 			s.BatteryLevelPct = cap
 		}
 	}
 
-	if data, err := os.ReadFile("/sys/class/power_supply/battery/status"); err == nil {
+	if data, err := os.ReadFile(batteryStatusPath); err == nil {
 		s.BatteryStatus = strings.TrimSpace(string(data))
 	}
 	// 2. CPU Temperature from cached thermal zone
@@ -84,7 +93,7 @@ func GetStats() HardwareStats {
 	}
 
 	// 3. Load average
-	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+	if data, err := os.ReadFile(procLoadavgPath); err == nil {
 		parts := strings.Fields(string(data))
 		if len(parts) > 0 {
 			if l, err := strconv.ParseFloat(parts[0], 64); err == nil {
@@ -94,7 +103,7 @@ func GetStats() HardwareStats {
 	}
 
 	// 4. Meminfo
-	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+	if data, err := os.ReadFile(procMeminfoPath); err == nil {
 		var totalKB, availKB int64
 		for _, line := range strings.Split(string(data), "\n") {
 			if strings.HasPrefix(line, "MemTotal:") {
@@ -116,7 +125,7 @@ func GetStats() HardwareStats {
 	}
 
 	// 5. Storage /data
-	s.StorageTotalGB, s.StorageFreeGB = getStorageStats("/data")
+	s.StorageTotalGB, s.StorageFreeGB = getStorageStats(storagePath)
 	if s.StorageTotalGB > 0 {
 		s.StorageUsedGB = s.StorageTotalGB - s.StorageFreeGB
 		if s.StorageUsedGB < 0 {

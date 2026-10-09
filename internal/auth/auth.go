@@ -50,6 +50,9 @@ func NewAuthManager() *AuthManager {
 }
 
 func findPasswordFilePath() string {
+	if custom := os.Getenv("DROIDSPACES_AUTH_FILE"); custom != "" {
+		return custom
+	}
 	candidateDirs := []string{
 		"/data/local/Droidspaces",
 		"/data/adb/modules/droidspaces-webui",

@@ -20,6 +20,9 @@ const (
 )
 
 func getLogDirectories() []string {
+	if custom := os.Getenv("DROIDSPACES_LOGS_DIR"); custom != "" {
+		return []string{custom}
+	}
 	return []string{
 		"/data/local/Droidspaces/Logs",
 		"/var/lib/Droidspaces/Logs",

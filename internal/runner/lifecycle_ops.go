@@ -76,7 +76,11 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 	}
 
 	// 2. Verify target does NOT exist
-	targetDir := filepath.Join("/data/local/Droidspaces/Containers", targetName)
+	dirs := config.GetContainersDirs()
+	if len(dirs) == 0 {
+		return fmt.Errorf("no containers directory configured")
+	}
+	targetDir := filepath.Join(dirs[0], targetName)
 	if _, err := os.Stat(targetDir); err == nil {
 		return fmt.Errorf("target container %s already exists", targetName)
 	}
@@ -101,8 +105,10 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 		targetImg := filepath.Join(targetDir, "rootfs.img")
 		cmd := exec.Command("cp", "--sparse=always", "-a", srcRootFS, targetImg)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			_ = os.RemoveAll(targetDir)
-			return fmt.Errorf("failed to clone sparse rootfs image (%v): %s", err, string(out))
+			if errCopy := copyFile(srcRootFS, targetImg); errCopy != nil {
+				_ = os.RemoveAll(targetDir)
+				return fmt.Errorf("failed to clone sparse rootfs image (%v): %s", err, string(out))
+			}
 		}
 		targetRootFS = targetImg
 	} else if strings.HasPrefix(srcRootFS, "/data/local/Droidspaces/rootfs/") {
@@ -116,8 +122,10 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			cmd2 := exec.Command("cp", "-r", srcRootFS+"/.", targetRootFSDir)
 			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-				_ = os.RemoveAll(targetDir)
-				return fmt.Errorf("failed to clone rootfs directory (%v): %s / %s", err2, string(out), string(out2))
+				if errCopy := copyDir(srcRootFS, targetRootFSDir); errCopy != nil {
+					_ = os.RemoveAll(targetDir)
+					return fmt.Errorf("failed to clone rootfs directory (%v): %s / %s", err2, string(out), string(out2))
+				}
 			}
 		}
 		targetRootFS = targetRootFSDir
@@ -130,8 +138,10 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 		}
 		cmd := exec.Command("cp", "-a", srcRootFS+"/.", targetRootFSDir)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			_ = os.RemoveAll(targetDir)
-			return fmt.Errorf("failed to clone rootfs directory (%v): %s", err, string(out))
+			if errCopy := copyDir(srcRootFS, targetRootFSDir); errCopy != nil {
+				_ = os.RemoveAll(targetDir)
+				return fmt.Errorf("failed to clone rootfs directory (%v): %s", err, string(out))
+			}
 		}
 		targetRootFS = targetRootFSDir
 	}
@@ -194,7 +204,11 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return fmt.Errorf("backup archive not found at %s", backupPath)
 	}
 
-	targetDir := filepath.Join("/data/local/Droidspaces/Containers", req.TargetName)
+	dirs := config.GetContainersDirs()
+	if len(dirs) == 0 {
+		return fmt.Errorf("no containers directory configured")
+	}
+	targetDir := filepath.Join(dirs[0], req.TargetName)
 
 	if req.Overwrite {
 		// Stop if running
@@ -280,4 +294,33 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return c.Start(model.StartRequest{Name: req.TargetName})
 	}
 	return nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		targetPath := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(targetPath, 0755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(targetPath, data, info.Mode())
+	})
 }

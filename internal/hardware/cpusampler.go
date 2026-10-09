@@ -3,7 +3,6 @@ package hardware
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,6 +21,9 @@ var (
 	prevSamples = make(map[string]containerSample)
 	cpuPercents = make(map[string]float64)
 	samplerOnce sync.Once
+
+	cgroupBaseDir = "/sys/fs/cgroup/droidspaces"
+	procDir       = "/proc"
 )
 
 // GetContainerCPU returns the latest calculated CPU % for a container.
@@ -95,7 +97,7 @@ func getContainerTotalTicks(name string, rootPid int) int64 {
 	seenPid := make(map[int]bool)
 
 	// 1. Check cgroup.procs in container's cgroup hierarchy
-	cgroupBase := filepath.Join("/sys/fs/cgroup/droidspaces", name)
+	cgroupBase := filepath.Join(cgroupBaseDir, name)
 	_ = filepath.Walk(cgroupBase, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() && info.Name() == "cgroup.procs" {
 			if data, err := os.ReadFile(path); err == nil {
@@ -119,7 +121,7 @@ func getContainerTotalTicks(name string, rootPid int) int64 {
 	}
 
 	// 2. Scan /proc for descendant processes belonging to rootPid
-	entries, err := os.ReadDir("/proc")
+	entries, err := os.ReadDir(procDir)
 	if err == nil {
 		type procNode struct {
 			ppid  int
@@ -172,7 +174,7 @@ func readPidTicks(pid int) int64 {
 }
 
 func readPidStat(pid int) (int, int64) {
-	statPath := fmt.Sprintf("/proc/%d/stat", pid)
+	statPath := filepath.Join(procDir, strconv.Itoa(pid), "stat")
 	data, err := os.ReadFile(statPath)
 	if err != nil {
 		return 0, 0

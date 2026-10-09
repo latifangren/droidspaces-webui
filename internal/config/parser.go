@@ -26,6 +26,9 @@ var (
 
 // GetContainersDirs returns candidate directories where Droidspaces workspaces live.
 func GetContainersDirs() []string {
+	if custom := os.Getenv("DROIDSPACES_CONTAINERS_DIR"); custom != "" {
+		return []string{custom}
+	}
 	return []string{
 		"/data/local/Droidspaces/Containers",
 		"/var/lib/Droidspaces/Containers",

@@ -8,6 +8,24 @@ import (
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
 
+// ClassifyInterfaceType determines the device class from interface name.
+func ClassifyInterfaceType(name string) string {
+	switch {
+	case strings.HasPrefix(name, "wlan") || strings.HasPrefix(name, "wifi"):
+		return "wifi"
+	case strings.HasPrefix(name, "rmnet") || strings.HasPrefix(name, "ccmni") || strings.HasPrefix(name, "pdp") || strings.HasPrefix(name, "wwan"):
+		return "cellular"
+	case strings.HasPrefix(name, "eth"):
+		return "ethernet"
+	case strings.HasPrefix(name, "br-") || strings.HasPrefix(name, "ds-") || strings.HasPrefix(name, "docker"):
+		return "bridge"
+	case strings.HasPrefix(name, "rndis") || strings.HasPrefix(name, "usb"):
+		return "usb_tether"
+	default:
+		return "other"
+	}
+}
+
 // ListHostNetworkInterfaces discovers host network interfaces and categorizes their types.
 func ListHostNetworkInterfaces() ([]model.NetworkInterfaceInfo, error) {
 	ifaces, err := net.Interfaces()
@@ -27,19 +45,7 @@ func ListHostNetworkInterfaces() ([]model.NetworkInterfaceInfo, error) {
 			state = "up"
 		}
 
-		ifType := "other"
-		switch {
-		case strings.HasPrefix(name, "wlan") || strings.HasPrefix(name, "wifi"):
-			ifType = "wifi"
-		case strings.HasPrefix(name, "rmnet") || strings.HasPrefix(name, "ccmni") || strings.HasPrefix(name, "pdp") || strings.HasPrefix(name, "wwan"):
-			ifType = "cellular"
-		case strings.HasPrefix(name, "eth"):
-			ifType = "ethernet"
-		case strings.HasPrefix(name, "br-") || strings.HasPrefix(name, "ds-") || strings.HasPrefix(name, "docker"):
-			ifType = "bridge"
-		case strings.HasPrefix(name, "rndis") || strings.HasPrefix(name, "usb"):
-			ifType = "usb_tether"
-		}
+		ifType := ClassifyInterfaceType(name)
 
 		var ip string
 		if addrs, err := ifi.Addrs(); err == nil {

@@ -128,6 +128,10 @@ var defaultCatalog = []model.TemplateInfo{
 }
 
 func GetStorageDir() string {
+	if custom := os.Getenv("DROIDSPACES_ROOTFS_DIR"); custom != "" {
+		_ = os.MkdirAll(custom, 0755)
+		return custom
+	}
 	dirs := []string{
 		"/data/local/Droidspaces/rootfs",
 		"/data/adb/droidspaces/rootfs",
@@ -310,19 +314,16 @@ func formatLocalName(name string) string {
 
 func DeleteTemplate(templateID string) error {
 	storage := GetStorageDir()
-	targetDir := filepath.Join(storage, templateID)
-	if err := os.RemoveAll(targetDir); err == nil {
-		return nil
-	}
 	if strings.HasPrefix(templateID, "local-") {
 		name := strings.TrimPrefix(templateID, "local-")
 		return os.RemoveAll(filepath.Join(storage, name))
 	}
 	if strings.HasPrefix(templateID, "img-") {
 		name := strings.TrimPrefix(templateID, "img-")
-		_ = os.Remove(filepath.Join(storage, name+".img"))
-		return os.Remove(filepath.Join(storage, name))
+		_ = os.RemoveAll(filepath.Join(storage, name))
+		return os.Remove(filepath.Join(storage, name+".img"))
 	}
+	targetDir := filepath.Join(storage, templateID)
 	return os.RemoveAll(targetDir)
 }
 
@@ -600,13 +601,20 @@ func applyPostExtractFixes(targetDir string) {
 	for _, s := range scriptCandidates {
 		if _, err := os.Stat(s); err == nil {
 			log.Printf("[templates] Running post_extract_fixes.sh on %s...", targetDir)
-			cmd := exec.Command("/system/bin/sh", s, targetDir)
-			_ = cmd.Run()
-			return
+			shPath := "/system/bin/sh"
+			if _, err := os.Stat(shPath); err != nil {
+				shPath = "sh"
+			}
+			cmd := exec.Command(shPath, s, targetDir)
+			if err := cmd.Run(); err == nil {
+				return
+			}
+			break
 		}
 	}
 
 	// Native fallback: configure AID_INET groups in /etc/group and DNS in /etc/resolv.conf
+	_ = os.MkdirAll(filepath.Join(targetDir, "etc"), 0755)
 	grpPath := filepath.Join(targetDir, "etc/group")
 	if data, err := os.ReadFile(grpPath); err == nil {
 		grpStr := string(data)
