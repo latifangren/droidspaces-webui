@@ -159,3 +159,13 @@ func WriteContainerConfigKeys(name string, updates map[string]string) error {
 	}
 	return err
 }
+
+// InvalidateCache clears cached container.config entries for the given container name.
+func InvalidateCache(name string) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	for _, cdir := range GetContainersDirs() {
+		targetPath := filepath.Join(cdir, name, "container.config")
+		delete(cfgCache, targetPath)
+	}
+}

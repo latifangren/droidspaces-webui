@@ -205,6 +205,26 @@ body {
   border-color: #f87171 !important;
 }
 
+.btn-action-clone {
+  color: #c084fc !important;
+  background-color: rgba(192, 132, 252, 0.15) !important;
+  border-color: rgba(192, 132, 252, 0.5) !important;
+}
+.btn-action-clone:hover {
+  background-color: rgba(192, 132, 252, 0.3) !important;
+  border-color: #c084fc !important;
+}
+
+.btn-action-restore {
+  color: #38bdf8 !important;
+  background-color: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
+}
+.btn-action-restore:hover {
+  background-color: rgba(56, 189, 248, 0.3) !important;
+  border-color: #38bdf8 !important;
+}
+
 /* Brutalist Cards */
 .card-brutal {
   background-color: var(--paper);

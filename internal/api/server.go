@@ -82,6 +82,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/settings", s.handleSettings)
 
 	// Containers Lifecycle & Inspection
+	s.mux.HandleFunc("/api/containers/restore", s.handleContainerRestore)
 	s.mux.HandleFunc("/api/containers", s.handleContainers)
 	s.mux.HandleFunc("/api/containers/", s.handleContainerAction)
 

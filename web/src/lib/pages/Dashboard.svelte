@@ -12,16 +12,18 @@
     Square,
     Play,
     Plus,
+    Copy,
   } from 'lucide-svelte';
+  import CloneModal from '../components/containers/CloneModal.svelte';
   import { toast } from '../stores/toast';
-
   export let statusData: any = {};
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let onNavigate: (route: string, data?: any) => void;
   export let onRefresh: () => void;
 
   let loading = false;
-
+  let showCloneModal = false;
+  let cloneSourceContainer = '';
   $: hw = statusData.hardware || {};
   $: runningList = containersData?.running || [];
   $: stoppedList = containersData?.stopped || [];
@@ -256,6 +258,13 @@
                   <span>Terminal</span>
                 </button>
                 <button
+                  on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                  class="btn-brutal !py-1 !px-2 text-xs btn-action-clone flex items-center gap-1"
+                  title="Clone Container"
+                >
+                  <Copy size={12} />
+                </button>
+                <button
                   on:click={() => restartContainer(c.name)}
                   class="btn-brutal !py-1 !px-2 text-xs btn-action-restart flex items-center gap-1"
                   title="Restart"
@@ -277,6 +286,13 @@
                 >
                   <Play size={12} />
                   <span>Start</span>
+                </button>
+                <button
+                  on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                  class="btn-brutal !py-1 !px-2 text-xs btn-action-clone flex items-center gap-1"
+                  title="Clone Container"
+                >
+                  <Copy size={12} />
                 </button>
               {/if}
             </div>
@@ -342,6 +358,13 @@
                       <TerminalIcon size={12} />
                     </button>
                     <button
+                      on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                      class="btn-brutal !p-1 !rounded-lg btn-action-clone"
+                      title="Clone"
+                    >
+                      <Copy size={12} />
+                    </button>
+                    <button
                       on:click={() => restartContainer(c.name)}
                       class="btn-brutal !p-1 !rounded-lg btn-action-restart"
                       title="Restart"
@@ -363,6 +386,13 @@
                     >
                       <Play size={12} />
                     </button>
+                    <button
+                      on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                      class="btn-brutal !p-1 !rounded-lg btn-action-clone"
+                      title="Clone"
+                    >
+                      <Copy size={12} />
+                    </button>
                   {/if}
                 </td>
               </tr>
@@ -372,4 +402,12 @@
       </div>
     {/if}
   </div>
+
+  <!-- Clone Container Modal -->
+  <CloneModal
+    show={showCloneModal}
+    sourceContainer={cloneSourceContainer}
+    onClose={() => { showCloneModal = false; cloneSourceContainer = ''; }}
+    onCloneSuccess={onRefresh}
+  />
 </div>

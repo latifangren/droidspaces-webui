@@ -213,3 +213,15 @@ type APIResponse struct {
 	Data    interface{} `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
+
+type RestoreRequest struct {
+	Filename   string `json:"filename"`
+	TargetName string `json:"target_name"`
+	Overwrite  bool   `json:"overwrite"`
+	AutoStart  bool   `json:"auto_start"`
+}
+
+type CloneRequest struct {
+	TargetName string `json:"target_name"`
+	AutoStart  bool   `json:"auto_start"`
+}

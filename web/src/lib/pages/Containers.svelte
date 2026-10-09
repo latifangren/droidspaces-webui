@@ -16,11 +16,13 @@
     Wifi,
     DownloadCloud,
     Loader2,
+    Copy,
   } from 'lucide-svelte';
   import CreateModal from '../components/containers/CreateModal.svelte';
   import BootOrderModal from '../components/containers/BootOrderModal.svelte';
   import DetailModal from '../components/containers/DetailModal.svelte';
   import BackupModal from '../components/containers/BackupModal.svelte';
+  import CloneModal from '../components/containers/CloneModal.svelte';
   import ConfirmModal from '../components/common/ConfirmModal.svelte';
   import { toast } from '../stores/toast';
   export let onRefresh: () => void;
@@ -39,7 +41,8 @@
   let selectedContainerDetail: any = null;
   let showBackupModal = false;
   let backupTargetContainer = '';
-  // Boot Priority State
+  let showCloneModal = false;
+  let cloneSourceContainer = '';
   let bootItems: any[] = [];
   let bootSaving = false;
   let isSubmittingCreate = false;
@@ -463,6 +466,13 @@
                       <TerminalIcon size={14} />
                     </button>
                     <button
+                      on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-clone"
+                      title="Clone Container"
+                    >
+                      <Copy size={14} />
+                    </button>
+                    <button
                       on:click={() => restartContainer(c.name)}
                       class="btn-brutal !p-1.5 !rounded-lg btn-action-restart"
                       title="Restart Container"
@@ -490,6 +500,13 @@
                       title="View Specs & Backups"
                     >
                       <Info size={14} />
+                    </button>
+                    <button
+                      on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-clone"
+                      title="Clone Container"
+                    >
+                      <Copy size={14} />
                     </button>
                     <button
                       on:click={() => startContainer(c.name)}
@@ -629,5 +646,14 @@
     show={showBackupModal}
     targetContainer={backupTargetContainer}
     onClose={() => { showBackupModal = false; backupTargetContainer = ''; }}
+    onRefreshContainers={onRefresh}
+  />
+
+  <!-- Clone Container Modal -->
+  <CloneModal
+    show={showCloneModal}
+    sourceContainer={cloneSourceContainer}
+    onClose={() => { showCloneModal = false; cloneSourceContainer = ''; }}
+    onCloneSuccess={onRefresh}
   />
 </div>

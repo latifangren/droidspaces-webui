@@ -223,9 +223,37 @@ func (s *Server) handleLifecycleRoute(w http.ResponseWriter, r *http.Request, na
 			return
 		}
 		s.sendJSON(w, http.StatusOK, model.ExecResponse{Output: out, ExitCode: 0}, "")
+	case "clone":
+		var req model.CloneRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.sendJSON(w, http.StatusBadRequest, nil, err.Error())
+			return
+		}
+		if err := s.client.Clone(name, req.TargetName, req.AutoStart); err != nil {
+			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		s.sendJSON(w, http.StatusOK, map[string]string{"message": "container cloned successfully", "name": req.TargetName}, "")
 	default:
 		s.sendJSON(w, http.StatusBadRequest, nil, "unknown action: "+action)
 	}
+}
+
+func (s *Server) handleContainerRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+		return
+	}
+	var req model.RestoreRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, nil, err.Error())
+		return
+	}
+	if err := s.client.Restore(req); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+	s.sendJSON(w, http.StatusOK, map[string]string{"message": "container restored successfully", "name": req.TargetName}, "")
 }
 
 func (s *Server) handleAllBackups(w http.ResponseWriter, r *http.Request) {
