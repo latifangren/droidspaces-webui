@@ -245,21 +245,22 @@
               {#if isRunning}
                 <button
                   on:click={() => onNavigate('terminal', { container: c.name })}
-                  class="btn-brutal !p-1.5 !rounded-lg text-[#fbbf24] border-[#fbbf24]/50 bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20 transition"
-                  title="Terminal"
+                  class="btn-brutal !py-1 !px-2.5 text-xs text-[#facc15] border-[#facc15]/50 bg-[#facc15]/15 hover:bg-[#facc15]/30 transition flex items-center gap-1 font-bold"
+                  title="Console Terminal"
                 >
                   <TerminalIcon size={12} />
+                  <span>Terminal</span>
                 </button>
                 <button
                   on:click={() => restartContainer(c.name)}
-                  class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#38bdf8] hover:border-[#38bdf8] transition"
+                  class="btn-brutal !py-1 !px-2 text-xs text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/25 transition"
                   title="Restart"
                 >
                   <RotateCcw size={12} />
                 </button>
                 <button
                   on:click={() => stopContainer(c.name)}
-                  class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#fb923c] hover:border-[#fb923c] transition"
+                  class="btn-brutal !py-1 !px-2 text-xs text-[#fb923c] border-[#fb923c]/40 bg-[#fb923c]/10 hover:bg-[#fb923c]/25 transition"
                   title="Stop"
                 >
                   <Square size={12} />
@@ -267,10 +268,11 @@
               {:else}
                 <button
                   on:click={() => startContainer(c.name)}
-                  class="btn-brutal btn-brutal-primary !p-1.5 !rounded-lg text-black"
+                  class="btn-brutal !py-1 !px-3 text-xs text-[#4ade80] border-[#4ade80]/50 bg-[#4ade80]/15 hover:bg-[#4ade80]/30 transition flex items-center gap-1 font-bold"
                   title="Start"
                 >
                   <Play size={12} />
+                  <span>Start</span>
                 </button>
               {/if}
             </div>
@@ -330,21 +332,21 @@
                   {#if isRunning}
                     <button
                       on:click={() => onNavigate('terminal', { container: c.name })}
-                      class="btn-brutal !p-1 !rounded-lg text-[#fbbf24] border-[#fbbf24]/50 bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20 transition"
+                      class="btn-brutal !p-1 !rounded-lg text-[#facc15] border-[#facc15]/50 bg-[#facc15]/15 hover:bg-[#facc15]/30 transition"
                       title="Terminal"
                     >
                       <TerminalIcon size={12} />
                     </button>
                     <button
                       on:click={() => restartContainer(c.name)}
-                      class="btn-brutal !p-1 !rounded-lg text-[#94a3b8] hover:text-[#38bdf8] hover:border-[#38bdf8] transition"
+                      class="btn-brutal !p-1 !rounded-lg text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/25 transition"
                       title="Restart"
                     >
                       <RotateCcw size={12} />
                     </button>
                     <button
                       on:click={() => stopContainer(c.name)}
-                      class="btn-brutal !p-1 !rounded-lg text-[#94a3b8] hover:text-[#fb923c] hover:border-[#fb923c] transition"
+                      class="btn-brutal !p-1 !rounded-lg text-[#fb923c] border-[#fb923c]/40 bg-[#fb923c]/10 hover:bg-[#fb923c]/25 transition"
                       title="Stop"
                     >
                       <Square size={12} />
@@ -352,7 +354,7 @@
                   {:else}
                     <button
                       on:click={() => startContainer(c.name)}
-                      class="btn-brutal btn-brutal-primary !p-1 !rounded-lg text-black"
+                      class="btn-brutal !p-1 !rounded-lg text-[#4ade80] border-[#4ade80]/50 bg-[#4ade80]/15 hover:bg-[#4ade80]/30 transition"
                       title="Start"
                     >
                       <Play size={12} />
