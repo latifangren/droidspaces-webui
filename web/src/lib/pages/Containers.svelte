@@ -439,28 +439,28 @@
                   {#if isRunning}
                     <button
                       on:click={() => inspectContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#818cf8] border-[#818cf8]/40 bg-[#818cf8]/10 hover:bg-[#818cf8]/25 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-inspect"
                       title="Manage Services, Processes & Specs"
                     >
                       <Layers size={14} />
                     </button>
                     <button
                       on:click={() => onNavigate('terminal', { container: c.name })}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#facc15] border-[#facc15]/50 bg-[#facc15]/15 hover:bg-[#facc15]/30 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-terminal"
                       title="Open Web Terminal"
                     >
                       <TerminalIcon size={14} />
                     </button>
                     <button
                       on:click={() => restartContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/25 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-restart"
                       title="Restart Container"
                     >
                       <RotateCcw size={14} />
                     </button>
                     <button
                       on:click={() => stopContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#fb923c] border-[#fb923c]/40 bg-[#fb923c]/10 hover:bg-[#fb923c]/25 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-stop"
                       title="Stop Container"
                     >
                       <Square size={14} />
@@ -468,11 +468,11 @@
                     <button
                       on:click={() => handleBackupContainer(c.name)}
                       disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#06b6d4] border-[#06b6d4]/40 bg-[#06b6d4]/10 hover:bg-[#06b6d4]/25 transition disabled:opacity-50"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup disabled:opacity-50"
                       title="Export Container Backup (.tar.gz)"
                     >
                       {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin text-[#06b6d4]" />
+                        <Loader2 size={14} class="animate-spin" />
                       {:else}
                         <Archive size={14} />
                       {/if}
@@ -480,14 +480,14 @@
                   {:else}
                     <button
                       on:click={() => inspectContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#818cf8] border-[#818cf8]/40 bg-[#818cf8]/10 hover:bg-[#818cf8]/25 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-inspect"
                       title="View Specs & Backups"
                     >
                       <Info size={14} />
                     </button>
                     <button
                       on:click={() => startContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#4ade80] border-[#4ade80]/50 bg-[#4ade80]/15 hover:bg-[#4ade80]/30 transition"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-start"
                       title="Start Container"
                     >
                       <Play size={14} />
@@ -495,11 +495,11 @@
                     <button
                       on:click={() => handleBackupContainer(c.name)}
                       disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg text-[#06b6d4] border-[#06b6d4]/40 bg-[#06b6d4]/10 hover:bg-[#06b6d4]/25 transition disabled:opacity-50"
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup disabled:opacity-50"
                       title="Export Container Backup (.tar.gz)"
                     >
                       {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin text-[#06b6d4]" />
+                        <Loader2 size={14} class="animate-spin" />
                       {:else}
                         <Archive size={14} />
                       {/if}
@@ -507,7 +507,7 @@
                   {/if}
                   <button
                     on:click={() => deleteContainer(c.name)}
-                    class="btn-brutal !p-1.5 !rounded-lg text-[#f87171] border-[#f87171]/40 bg-[#f87171]/10 hover:bg-[#f87171]/25 hover:border-[#f87171] transition"
+                    class="btn-brutal !p-1.5 !rounded-lg btn-action-delete"
                     title="Delete Container"
                   >
                     <Trash2 size={14} />

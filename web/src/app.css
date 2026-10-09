@@ -134,6 +134,77 @@ body {
   color: #000000;
 }
 
+/* Tactile Neo-Brutalist Colored Action Buttons */
+.btn-action-terminal {
+  color: #facc15 !important;
+  background-color: rgba(250, 204, 21, 0.15) !important;
+  border-color: rgba(250, 204, 21, 0.5) !important;
+}
+.btn-action-terminal:hover {
+  background-color: rgba(250, 204, 21, 0.3) !important;
+  border-color: #facc15 !important;
+}
+
+.btn-action-inspect {
+  color: #818cf8 !important;
+  background-color: rgba(129, 140, 248, 0.15) !important;
+  border-color: rgba(129, 140, 248, 0.5) !important;
+}
+.btn-action-inspect:hover {
+  background-color: rgba(129, 140, 248, 0.3) !important;
+  border-color: #818cf8 !important;
+}
+
+.btn-action-restart {
+  color: #38bdf8 !important;
+  background-color: rgba(56, 189, 248, 0.15) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
+}
+.btn-action-restart:hover {
+  background-color: rgba(56, 189, 248, 0.3) !important;
+  border-color: #38bdf8 !important;
+}
+
+.btn-action-stop {
+  color: #fb923c !important;
+  background-color: rgba(251, 146, 60, 0.15) !important;
+  border-color: rgba(251, 146, 60, 0.5) !important;
+}
+.btn-action-stop:hover {
+  background-color: rgba(251, 146, 60, 0.3) !important;
+  border-color: #fb923c !important;
+}
+
+.btn-action-backup {
+  color: #06b6d4 !important;
+  background-color: rgba(6, 182, 212, 0.15) !important;
+  border-color: rgba(6, 182, 212, 0.5) !important;
+}
+.btn-action-backup:hover {
+  background-color: rgba(6, 182, 212, 0.3) !important;
+  border-color: #06b6d4 !important;
+}
+
+.btn-action-start {
+  color: #4ade80 !important;
+  background-color: rgba(74, 222, 128, 0.18) !important;
+  border-color: rgba(74, 222, 128, 0.55) !important;
+}
+.btn-action-start:hover {
+  background-color: rgba(74, 222, 128, 0.35) !important;
+  border-color: #4ade80 !important;
+}
+
+.btn-action-delete {
+  color: #f87171 !important;
+  background-color: rgba(248, 113, 113, 0.15) !important;
+  border-color: rgba(248, 113, 113, 0.5) !important;
+}
+.btn-action-delete:hover {
+  background-color: rgba(248, 113, 113, 0.3) !important;
+  border-color: #f87171 !important;
+}
+
 /* Brutalist Cards */
 .card-brutal {
   background-color: var(--paper);

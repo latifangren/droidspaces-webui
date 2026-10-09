@@ -245,7 +245,7 @@
               {#if isRunning}
                 <button
                   on:click={() => onNavigate('terminal', { container: c.name })}
-                  class="btn-brutal !py-1 !px-2.5 text-xs text-[#facc15] border-[#facc15]/50 bg-[#facc15]/15 hover:bg-[#facc15]/30 transition flex items-center gap-1 font-bold"
+                  class="btn-brutal !py-1 !px-2.5 text-xs btn-action-terminal flex items-center gap-1 font-bold"
                   title="Console Terminal"
                 >
                   <TerminalIcon size={12} />
@@ -253,14 +253,14 @@
                 </button>
                 <button
                   on:click={() => restartContainer(c.name)}
-                  class="btn-brutal !py-1 !px-2 text-xs text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/25 transition"
+                  class="btn-brutal !py-1 !px-2 text-xs btn-action-restart flex items-center gap-1"
                   title="Restart"
                 >
                   <RotateCcw size={12} />
                 </button>
                 <button
                   on:click={() => stopContainer(c.name)}
-                  class="btn-brutal !py-1 !px-2 text-xs text-[#fb923c] border-[#fb923c]/40 bg-[#fb923c]/10 hover:bg-[#fb923c]/25 transition"
+                  class="btn-brutal !py-1 !px-2 text-xs btn-action-stop flex items-center gap-1"
                   title="Stop"
                 >
                   <Square size={12} />
@@ -268,7 +268,7 @@
               {:else}
                 <button
                   on:click={() => startContainer(c.name)}
-                  class="btn-brutal !py-1 !px-3 text-xs text-[#4ade80] border-[#4ade80]/50 bg-[#4ade80]/15 hover:bg-[#4ade80]/30 transition flex items-center gap-1 font-bold"
+                  class="btn-brutal !py-1 !px-3 text-xs btn-action-start flex items-center gap-1 font-bold"
                   title="Start"
                 >
                   <Play size={12} />
@@ -332,21 +332,21 @@
                   {#if isRunning}
                     <button
                       on:click={() => onNavigate('terminal', { container: c.name })}
-                      class="btn-brutal !p-1 !rounded-lg text-[#facc15] border-[#facc15]/50 bg-[#facc15]/15 hover:bg-[#facc15]/30 transition"
+                      class="btn-brutal !p-1 !rounded-lg btn-action-terminal"
                       title="Terminal"
                     >
                       <TerminalIcon size={12} />
                     </button>
                     <button
                       on:click={() => restartContainer(c.name)}
-                      class="btn-brutal !p-1 !rounded-lg text-[#38bdf8] border-[#38bdf8]/40 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/25 transition"
+                      class="btn-brutal !p-1 !rounded-lg btn-action-restart"
                       title="Restart"
                     >
                       <RotateCcw size={12} />
                     </button>
                     <button
                       on:click={() => stopContainer(c.name)}
-                      class="btn-brutal !p-1 !rounded-lg text-[#fb923c] border-[#fb923c]/40 bg-[#fb923c]/10 hover:bg-[#fb923c]/25 transition"
+                      class="btn-brutal !p-1 !rounded-lg btn-action-stop"
                       title="Stop"
                     >
                       <Square size={12} />
@@ -354,7 +354,7 @@
                   {:else}
                     <button
                       on:click={() => startContainer(c.name)}
-                      class="btn-brutal !p-1 !rounded-lg text-[#4ade80] border-[#4ade80]/50 bg-[#4ade80]/15 hover:bg-[#4ade80]/30 transition"
+                      class="btn-brutal !p-1 !rounded-lg btn-action-start"
                       title="Start"
                     >
                       <Play size={12} />

@@ -18,9 +18,9 @@
   export let refreshing: boolean = false;
   export let theme: string = 'dark';
   export let onToggleTheme: () => void;
+  export let colorPalette: string = 'default';
   export let onSetColor: (color: string) => void;
   export let onLogout: (() => void) | undefined = undefined;
-
   let showPaletteMenu = false;
   const palettes = [
     { id: 'default', label: 'Retro Pop', color: '#ffe14a' },
