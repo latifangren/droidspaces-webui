@@ -227,3 +227,45 @@ func (s *Server) handleLifecycleRoute(w http.ResponseWriter, r *http.Request, na
 		s.sendJSON(w, http.StatusBadRequest, nil, "unknown action: "+action)
 	}
 }
+
+func (s *Server) handleAllBackups(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		list, err := s.client.ListAllBackups()
+		if err != nil {
+			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		s.sendJSON(w, http.StatusOK, list, "")
+	case http.MethodDelete:
+		fileParam := r.URL.Query().Get("file")
+		if fileParam == "" {
+			s.sendJSON(w, http.StatusBadRequest, nil, "file parameter required")
+			return
+		}
+		if err := s.client.DeleteBackup(fileParam); err != nil {
+			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+			return
+		}
+		s.sendJSON(w, http.StatusOK, map[string]string{"message": "backup deleted"}, "")
+	default:
+		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+	}
+}
+
+func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
+	fileParam := r.URL.Query().Get("file")
+	if fileParam == "" {
+		s.sendJSON(w, http.StatusBadRequest, nil, "file parameter required")
+		return
+	}
+	cleanName := filepath.Base(fileParam)
+	filePath := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
+	if _, err := os.Stat(filePath); err != nil {
+		s.sendJSON(w, http.StatusNotFound, nil, "backup file not found")
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", cleanName))
+	w.Header().Set("Content-Type", "application/gzip")
+	http.ServeFile(w, r, filePath)
+}

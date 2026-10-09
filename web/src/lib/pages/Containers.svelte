@@ -20,6 +20,7 @@
   import CreateModal from '../components/containers/CreateModal.svelte';
   import BootOrderModal from '../components/containers/BootOrderModal.svelte';
   import DetailModal from '../components/containers/DetailModal.svelte';
+  import BackupModal from '../components/containers/BackupModal.svelte';
   import ConfirmModal from '../components/common/ConfirmModal.svelte';
   import { toast } from '../stores/toast';
   export let onRefresh: () => void;
@@ -36,7 +37,8 @@
   let showBootModal = false;
   let showDetailModal = false;
   let selectedContainerDetail: any = null;
-
+  let showBackupModal = false;
+  let backupTargetContainer = '';
   // Boot Priority State
   let bootItems: any[] = [];
   let bootSaving = false;
@@ -328,6 +330,15 @@
         <span class="hidden md:inline">Boot Order</span>
       </button>
 
+      <!-- Backups Manager Button -->
+      <button
+        on:click={() => { backupTargetContainer = ''; showBackupModal = true; }}
+        class="btn-brutal flex items-center gap-1.5"
+        title="Manage Container Backups (.tar.gz)"
+      >
+        <Archive size={15} class="text-primary" />
+        <span class="hidden md:inline">Backups</span>
+      </button>
       <!-- Refresh Button -->
       <button on:click={onRefresh} class="btn-brutal !p-2" title="Refresh Container List">
         <RotateCcw size={16} />
@@ -466,16 +477,11 @@
                       <Square size={14} />
                     </button>
                     <button
-                      on:click={() => handleBackupContainer(c.name)}
-                      disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup disabled:opacity-50"
-                      title="Export Container Backup (.tar.gz)"
+                      on:click={() => { backupTargetContainer = c.name; showBackupModal = true; }}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup"
+                      title="Export / Download Backups (.tar.gz)"
                     >
-                      {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin" />
-                      {:else}
-                        <Archive size={14} />
-                      {/if}
+                      <Archive size={14} />
                     </button>
                   {:else}
                     <button
@@ -493,16 +499,11 @@
                       <Play size={14} />
                     </button>
                     <button
-                      on:click={() => handleBackupContainer(c.name)}
-                      disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup disabled:opacity-50"
-                      title="Export Container Backup (.tar.gz)"
+                      on:click={() => { backupTargetContainer = c.name; showBackupModal = true; }}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-backup"
+                      title="Export / Download Backups (.tar.gz)"
                     >
-                      {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin" />
-                      {:else}
-                        <Archive size={14} />
-                      {/if}
+                      <Archive size={14} />
                     </button>
                   {/if}
                   <button
@@ -621,5 +622,12 @@
     destructive={confirmDestructive}
     onConfirm={confirmAction}
     onCancel={() => (confirmShow = false)}
+  />
+
+  <!-- Backups Manager Modal -->
+  <BackupModal
+    show={showBackupModal}
+    targetContainer={backupTargetContainer}
+    onClose={() => { showBackupModal = false; backupTargetContainer = ''; }}
   />
 </div>

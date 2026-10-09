@@ -642,3 +642,39 @@ func (c *Client) DeleteBackup(filename string) error {
 	target := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
 	return os.Remove(target)
 }
+
+func (c *Client) ListAllBackups() ([]model.ContainerBackupInfo, error) {
+	backupsDir := "/data/local/Droidspaces/Backups"
+	_ = os.MkdirAll(backupsDir, 0755)
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var list []model.ContainerBackupInfo
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		fname := ent.Name()
+		if strings.HasSuffix(fname, ".tar.gz") || strings.HasSuffix(fname, ".tar") {
+			info, err := ent.Info()
+			if err != nil {
+				continue
+			}
+			list = append(list, model.ContainerBackupInfo{
+				Filename:  fname,
+				Path:      filepath.Join(backupsDir, fname),
+				Size:      FormatBytes(info.Size()),
+				SizeBytes: info.Size(),
+				ModTime:   info.ModTime().Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ModTime > list[j].ModTime
+	})
+	return list, nil
+}

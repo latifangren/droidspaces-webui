@@ -39,6 +39,8 @@ type HardwareStats struct {
 	RAMTotalMB      int64   `json:"ram_total_mb"`
 	StorageFreeGB   float64 `json:"storage_free_gb"`
 	StorageTotalGB  float64 `json:"storage_total_gb"`
+	StorageUsedGB   float64 `json:"storage_used_gb"`
+	StorageUsedPct  float64 `json:"storage_used_pct"`
 }
 
 func GetStats() HardwareStats {
@@ -115,6 +117,12 @@ func GetStats() HardwareStats {
 
 	// 5. Storage /data
 	s.StorageTotalGB, s.StorageFreeGB = getStorageStats("/data")
-
+	if s.StorageTotalGB > 0 {
+		s.StorageUsedGB = s.StorageTotalGB - s.StorageFreeGB
+		if s.StorageUsedGB < 0 {
+			s.StorageUsedGB = 0
+		}
+		s.StorageUsedPct = (s.StorageUsedGB / s.StorageTotalGB) * 100.0
+	}
 	return s
 }

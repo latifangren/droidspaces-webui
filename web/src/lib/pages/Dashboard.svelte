@@ -28,7 +28,11 @@
   $: allContainers = [...runningList, ...stoppedList];
   $: totalCount = containersData?.total || allContainers.length;
   $: runningCount = runningList.length;
-
+  $: storageUsedPct = hw.storage_used_pct !== undefined && !isNaN(hw.storage_used_pct)
+    ? Math.round(hw.storage_used_pct)
+    : (hw.storage_total_gb && hw.storage_total_gb > 0 && hw.storage_free_gb !== undefined
+        ? Math.max(0, Math.min(100, Math.round(((hw.storage_total_gb - hw.storage_free_gb) / hw.storage_total_gb) * 100)))
+        : null);
   async function handleRefresh() {
     loading = true;
     try {
@@ -130,7 +134,7 @@
         {hw.storage_free_gb ? hw.storage_free_gb.toFixed(1) + ' GB' : '--'}
       </div>
       <div class="text-[10px] font-bold text-muted mt-0.5">
-        Total: {hw.storage_total_gb ? hw.storage_total_gb.toFixed(0) : '--'} GB • Used: {hw.storage_used_pct ? hw.storage_used_pct.toFixed(0) : '--'}%
+        Total: {hw.storage_total_gb ? hw.storage_total_gb.toFixed(0) : '--'} GB • Used: {storageUsedPct !== null ? storageUsedPct + '%' : '--%'}
       </div>
     </div>
 

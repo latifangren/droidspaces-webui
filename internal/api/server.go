@@ -85,6 +85,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/containers", s.handleContainers)
 	s.mux.HandleFunc("/api/containers/", s.handleContainerAction)
 
+	// Global Backups Management
+	s.mux.HandleFunc("/api/backups", s.handleAllBackups)
+	s.mux.HandleFunc("/api/backups/download", s.handleBackupDownload)
+
 	// Templates & RootFS Store
 	s.mux.HandleFunc("/api/templates", s.handleTemplates)
 	s.mux.HandleFunc("/api/templates/download", s.handleTemplateDownload)
