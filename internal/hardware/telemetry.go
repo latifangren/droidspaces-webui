@@ -5,7 +5,29 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+var (
+	cpuThermalZonePath string
+	cpuThermalOnce     sync.Once
+)
+
+func discoverCPUThermalZone() string {
+	for i := range 40 {
+		typePath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/type", i)
+		tempPath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/temp", i)
+		if zType, err := os.ReadFile(typePath); err == nil {
+			tStr := strings.ToLower(string(zType))
+			if strings.Contains(tStr, "cpu") || strings.Contains(tStr, "soc") || strings.Contains(tStr, "tsens") {
+				if _, err := os.ReadFile(tempPath); err == nil {
+					return tempPath
+				}
+			}
+		}
+	}
+	return ""
+}
 
 type HardwareStats struct {
 	BatteryLevelPct int     `json:"battery_level_pct"`
@@ -42,22 +64,18 @@ func GetStats() HardwareStats {
 	if data, err := os.ReadFile("/sys/class/power_supply/battery/status"); err == nil {
 		s.BatteryStatus = strings.TrimSpace(string(data))
 	}
-	// 2. CPU Temperature from thermal zones
-	for i := range 40 {
-		typePath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/type", i)
-		tempPath := fmt.Sprintf("/sys/class/thermal/thermal_zone%d/temp", i)
-		if zType, err := os.ReadFile(typePath); err == nil {
-			tStr := strings.ToLower(string(zType))
-			if strings.Contains(tStr, "cpu") || strings.Contains(tStr, "soc") || strings.Contains(tStr, "tsens") {
-				if zTemp, err := os.ReadFile(tempPath); err == nil {
-					if t, err := strconv.ParseFloat(strings.TrimSpace(string(zTemp)), 64); err == nil {
-						if t > 1000 {
-							s.CPUTempC = t / 1000.0
-						} else {
-							s.CPUTempC = t
-						}
-						break
-					}
+	// 2. CPU Temperature from cached thermal zone
+	cpuThermalOnce.Do(func() {
+		cpuThermalZonePath = discoverCPUThermalZone()
+	})
+
+	if cpuThermalZonePath != "" {
+		if zTemp, err := os.ReadFile(cpuThermalZonePath); err == nil {
+			if t, err := strconv.ParseFloat(strings.TrimSpace(string(zTemp)), 64); err == nil {
+				if t > 1000 {
+					s.CPUTempC = t / 1000.0
+				} else {
+					s.CPUTempC = t
 				}
 			}
 		}

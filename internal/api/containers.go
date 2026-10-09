@@ -3,10 +3,13 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
+
+var safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -24,8 +27,8 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 			s.sendJSON(w, http.StatusBadRequest, nil, err.Error())
 			return
 		}
-		if req.Name == "" {
-			s.sendJSON(w, http.StatusBadRequest, nil, "container name is required")
+		if req.Name == "" || !safeContainerNameRegex.MatchString(req.Name) {
+			s.sendJSON(w, http.StatusBadRequest, nil, "invalid container name: must be alphanumeric, _ or -")
 			return
 		}
 		if err := s.client.Start(req); err != nil {
@@ -46,8 +49,10 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := parts[2]
-
-	// GET /api/containers/{name}
+	if !safeContainerNameRegex.MatchString(name) {
+		s.sendJSON(w, http.StatusBadRequest, nil, "invalid container name")
+		return
+	}
 	if len(parts) == 3 && r.Method == http.MethodGet {
 		info, err := s.client.Info(name)
 		if err != nil {

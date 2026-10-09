@@ -160,7 +160,8 @@
 
   function sendResize() {
     if (ws && ws.readyState === WebSocket.OPEN && term) {
-      ws.send(JSON.stringify({
+      // Prefix '1' indicates resize control command
+      ws.send('1' + JSON.stringify({
         type: 'resize',
         cols: term.cols,
         rows: term.rows,
@@ -170,7 +171,8 @@
 
   function sendData(data: string) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(data);
+      // Prefix '0' indicates raw stdin keystrokes
+      ws.send('0' + data);
     }
   }
 

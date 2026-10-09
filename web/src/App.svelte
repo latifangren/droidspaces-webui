@@ -188,13 +188,16 @@
         <Containers {containersData} onRefresh={loadData} {prefillContainer} onNavigate={navigate} />
       {:else if currentRoute === 'logs'}
         <Logs />
-      {:else if currentRoute === 'terminal'}
-        <Terminal {containersData} {terminalParams} />
       {:else if currentRoute === 'templates'}
         <Templates onNavigate={navigate} />
       {:else if currentRoute === 'settings'}
         <Settings {statusData} onRefresh={loadData} {colorPalette} onSetColor={setColor} />
       {/if}
+
+      <!-- Persistent Terminal DOM & WebSocket: Preserved across routes to prevent disconnects -->
+      <div class={currentRoute === 'terminal' ? 'block h-full w-full' : 'hidden'}>
+        <Terminal {containersData} {terminalParams} />
+      </div>
     </main>
   </div>
 

@@ -152,17 +152,37 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		// Handle resize message
-		if msgType == websocket.TextMessage && len(msg) > 0 && msg[0] == '{' {
-			var rmsg resizeMessage
-			if err := json.Unmarshal(msg, &rmsg); err == nil && rmsg.Type == "resize" {
-				_ = sess.Resize(rmsg.Cols, rmsg.Rows)
-				continue
-			}
+		if len(msg) == 0 {
+			continue
 		}
 
-		if err := sess.WriteInput(msg); err != nil {
-			break
+		// Binary prefix framing:
+		// '1' or 0x01: Resize command
+		// '0' or 0x00: Stdin data
+		switch msg[0] {
+		case '1', 0x01:
+			var rmsg resizeMessage
+			if err := json.Unmarshal(msg[1:], &rmsg); err == nil && rmsg.Cols > 0 && rmsg.Rows > 0 {
+				_ = sess.Resize(rmsg.Cols, rmsg.Rows)
+			}
+			continue
+		case '0', 0x00:
+			if err := sess.WriteInput(msg[1:]); err != nil {
+				break
+			}
+			continue
+		default:
+			// Fallback compatibility for clients without prefix
+			if msgType == websocket.TextMessage && msg[0] == '{' {
+				var rmsg resizeMessage
+				if err := json.Unmarshal(msg, &rmsg); err == nil && rmsg.Type == "resize" && rmsg.Cols > 0 && rmsg.Rows > 0 {
+					_ = sess.Resize(rmsg.Cols, rmsg.Rows)
+					continue
+				}
+			}
+			if err := sess.WriteInput(msg); err != nil {
+				break
+			}
 		}
 	}
 }

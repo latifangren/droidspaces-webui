@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	ansiRegex        = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	safeLogPathRegex = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
 )
-
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	show, _ := s.client.Show()
 	total := 0
@@ -281,11 +281,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cleanParam := filepath.Clean(filepath.FromSlash(fileParam))
-	if strings.Contains(cleanParam, "..") {
+	if !safeLogPathRegex.MatchString(fileParam) || strings.Contains(fileParam, "..") {
 		s.sendJSON(w, http.StatusBadRequest, nil, "invalid log file path")
 		return
 	}
+	cleanParam := filepath.Clean(filepath.FromSlash(fileParam))
 
 	var targetPath string
 	for _, dir := range logDirs {

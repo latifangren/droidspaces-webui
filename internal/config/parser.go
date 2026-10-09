@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+var safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 type configCacheEntry struct {
 	modTime time.Time
@@ -32,7 +35,7 @@ func GetContainersDirs() []string {
 
 // ReadContainerConfig parses key=value from a container's container.config with in-memory caching.
 func ReadContainerConfig(name string) (map[string]string, error) {
-	if strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+	if !safeContainerNameRegex.MatchString(name) {
 		return nil, fmt.Errorf("invalid container name: %s", name)
 	}
 
@@ -91,7 +94,7 @@ func ReadContainerConfig(name string) (map[string]string, error) {
 
 // WriteContainerConfigKeys updates or appends key-value pairs in container.config and invalidates cache.
 func WriteContainerConfigKeys(name string, updates map[string]string) error {
-	if strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+	if !safeContainerNameRegex.MatchString(name) {
 		return fmt.Errorf("invalid container name: %s", name)
 	}
 	var targetPath string
