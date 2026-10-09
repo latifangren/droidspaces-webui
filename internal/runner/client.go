@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -137,6 +138,14 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				if item.RootFS == "" {
 					item.RootFS = cfg["rootfs_path"]
 				}
+				rawPorts := cfg["port_forwards"]
+				if rawPorts == "" {
+					rawPorts = cfg["port"]
+				}
+				item.PortMappings = ParsePortMappings(rawPorts)
+			}
+			if item.RootFS != "" {
+				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
 			}
 			item.InitSystem = c.DetectInitSystem(item.Name)
 		}
@@ -175,6 +184,14 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				if prio, err := strconv.Atoi(cfg["run_at_boot_priority"]); err == nil {
 					stoppedSummary.RunAtBootPriority = prio
 				}
+				rawPorts := cfg["port_forwards"]
+				if rawPorts == "" {
+					rawPorts = cfg["port"]
+				}
+				stoppedSummary.PortMappings = ParsePortMappings(rawPorts)
+			}
+			if stoppedSummary.RootFS != "" {
+				stoppedSummary.DiskSize, stoppedSummary.DiskSizeBytes = GetContainerDiskSize(stoppedSummary.RootFS)
 			}
 
 			stoppedSummary.InitSystem = c.DetectInitSystem(name)
@@ -183,6 +200,7 @@ func (c *Client) Show() (*model.ShowResult, error) {
 		}
 	}
 
+	res.PortMatrix = ParsePortMatrix(res.Running, res.Stopped)
 	res.Total = len(res.Running) + len(res.Stopped)
 	return &res, nil
 }
@@ -196,6 +214,15 @@ func (c *Client) Info(name string) (map[string]interface{}, error) {
 	var res map[string]interface{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
 		return nil, fmt.Errorf("failed to parse info output: %w", err)
+	}
+	if cfg, err := config.ReadContainerConfig(name); err == nil {
+		rootfs := cfg["rootfs_path"]
+		if rootfs != "" {
+			res["rootfs_path"] = rootfs
+			dSize, dBytes := GetContainerDiskSize(rootfs)
+			res["disk_size"] = dSize
+			res["disk_size_bytes"] = dBytes
+		}
 	}
 	return res, nil
 }
@@ -487,4 +514,102 @@ func (c *Client) ExecHost(command string) (string, error) {
 		return output, fmt.Errorf("%w: %s", err, output)
 	}
 	return output, nil
+}
+
+func (c *Client) Export(name, outputPath string) error {
+	scriptCandidates := []string{
+		"/data/local/Droidspaces/bin/export_container.sh",
+		"/data/adb/modules/droidspaces/bin/export_container.sh",
+		"deploy/magisk/export_container.sh",
+	}
+
+	var scriptPath string
+	for _, sc := range scriptCandidates {
+		if _, err := os.Stat(sc); err == nil {
+			scriptPath = sc
+			break
+		}
+	}
+
+	if scriptPath != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sh", scriptPath, name, outputPath)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("export script error (%v): %s", err, stderr.String())
+		}
+		return nil
+	}
+
+	cfg, err := config.ReadContainerConfig(name)
+	if err != nil {
+		return fmt.Errorf("failed to read container config: %w", err)
+	}
+	rootfs := cfg["rootfs_path"]
+	if rootfs == "" {
+		return fmt.Errorf("rootfs_path not found for %s", name)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "tar", "-czf", outputPath, "-C", rootfs, ".")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tar fallback export failed: %w - %s", err, stderr.String())
+	}
+	return nil
+}
+
+func (c *Client) ListBackups(name string) ([]model.ContainerBackupInfo, error) {
+	backupsDir := "/data/local/Droidspaces/Backups"
+	_ = os.MkdirAll(backupsDir, 0755)
+
+	entries, err := os.ReadDir(backupsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	prefix := name + "_"
+	var list []model.ContainerBackupInfo
+
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		fname := ent.Name()
+		if (strings.HasPrefix(fname, prefix) || fname == name+".tar.gz") && (strings.HasSuffix(fname, ".tar.gz") || strings.HasSuffix(fname, ".tar")) {
+			info, err := ent.Info()
+			if err != nil {
+				continue
+			}
+			list = append(list, model.ContainerBackupInfo{
+				Filename:  fname,
+				Path:      filepath.Join(backupsDir, fname),
+				Size:      FormatBytes(info.Size()),
+				SizeBytes: info.Size(),
+				ModTime:   info.ModTime().Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ModTime > list[j].ModTime
+	})
+	return list, nil
+}
+
+func (c *Client) DeleteBackup(filename string) error {
+	cleanName := filepath.Base(filename)
+	if !strings.HasSuffix(cleanName, ".tar.gz") && !strings.HasSuffix(cleanName, ".tar") {
+		return fmt.Errorf("invalid backup filename")
+	}
+	target := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
+	return os.Remove(target)
 }

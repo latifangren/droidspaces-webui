@@ -5,6 +5,7 @@ type ShowResult struct {
 	RAMTotalKB int64              `json:"ram_total_kb"`
 	Running    []ContainerSummary `json:"running"`
 	Stopped    []ContainerSummary `json:"stopped,omitempty"`
+	PortMatrix []PortMatrixEntry  `json:"port_matrix,omitempty"`
 }
 
 type ContainerSummary struct {
@@ -25,7 +26,27 @@ type ContainerSummary struct {
 	RootFS            string  `json:"rootfs,omitempty"`
 	InitSystem        string  `json:"init_system,omitempty"` // "systemd" | "openrc" | "procd" | "unknown"
 	RunAtBoot         bool    `json:"run_at_boot,omitempty"`
-	RunAtBootPriority int     `json:"run_at_boot_priority,omitempty"`
+	RunAtBootPriority int      `json:"run_at_boot_priority,omitempty"`
+	DiskSize          string   `json:"disk_size,omitempty"`
+	DiskSizeBytes     int64    `json:"disk_size_bytes,omitempty"`
+	PortMappings      []string `json:"port_mappings,omitempty"`
+}
+
+type PortMatrixEntry struct {
+	HostPort      string `json:"host_port"`
+	Protocol      string `json:"protocol"`
+	ContainerName string `json:"container_name"`
+	ContainerPort string `json:"container_port"`
+	ContainerIP   string `json:"container_ip,omitempty"`
+	Status        string `json:"status"` // "active" | "inactive"
+}
+
+type ContainerBackupInfo struct {
+	Filename  string `json:"filename"`
+	Path      string `json:"path"`
+	Size      string `json:"size"`
+	SizeBytes int64  `json:"size_bytes"`
+	ModTime   string `json:"mod_time"`
 }
 
 type StartRequest struct {

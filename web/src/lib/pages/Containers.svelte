@@ -11,6 +11,11 @@
     Box,
     ListOrdered,
     Layers,
+    HardDrive,
+    Archive,
+    Wifi,
+    DownloadCloud,
+    Loader2,
   } from 'lucide-svelte';
 
   import CreateModal from '../components/containers/CreateModal.svelte';
@@ -36,6 +41,8 @@
   let bootItems: any[] = [];
   let bootSaving = false;
   let isSubmittingCreate = false;
+  let backupInProgress = false;
+  let activeBackupName = '';
 
   $: if (prefillContainer) {
     showCreateModal = true;
@@ -172,6 +179,27 @@
       alert('Error: ' + e.message);
     }
   }
+  async function handleBackupContainer(cname: string) {
+    if (!confirm(`Create full backup archive (.tar.gz) of container "${cname}"?`)) return;
+    backupInProgress = true;
+    activeBackupName = cname;
+    try {
+      const res = await fetch(`/api/containers/${cname}/backup`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success && json.data) {
+        if (confirm(`Backup created successfully!\n\nFile: ${json.data.filename}\nSize: ${json.data.size}\n\nDownload archive now?`)) {
+          window.location.href = `/api/containers/${cname}/backup?file=${json.data.filename}`;
+        }
+      } else {
+        alert('Backup failed: ' + (json.error || 'Unknown error'));
+      }
+    } catch (e: any) {
+      alert('Backup failed: ' + e.message);
+    } finally {
+      backupInProgress = false;
+      activeBackupName = '';
+    }
+  }
 
   async function handleCreateContainer(payload: any) {
     isSubmittingCreate = true;
@@ -291,9 +319,12 @@
               <th class="px-5 py-3">Status</th>
               <th class="px-5 py-3">IP / Hostname</th>
               <th class="px-5 py-3">PID</th>
+              <th class="px-5 py-3 flex items-center gap-1">
+                <HardDrive size={11} class="text-primary" />
+                <span>Disk</span>
+              </th>
               <th class="px-5 py-3">Memory</th>
               <th class="px-5 py-3">CPU</th>
-              <th class="px-5 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y-2 divide-line font-mono">
@@ -322,9 +353,21 @@
                   </span>
                 </td>
                 <td class="px-5 py-4 text-muted">
-                  {c.ip || c.hostname || '-'}
+                  <div class="flex flex-col">
+                    <span>{c.ip || c.hostname || '-'}</span>
+                    {#if c.port_mappings && c.port_mappings.length > 0}
+                      <span class="text-[9px] text-primary font-bold truncate max-w-[120px]" title={c.port_mappings.join(', ')}>
+                        {c.port_mappings.join(', ')}
+                      </span>
+                    {/if}
+                  </div>
                 </td>
                 <td class="px-5 py-4 text-muted">{c.pid || '-'}</td>
+                <td class="px-5 py-4 text-ink font-bold">
+                  <span class="badge-brutal !text-[10px] bg-panel-alt border border-line text-ink">
+                    {c.disk_size || '—'}
+                  </span>
+                </td>
                 <td class="px-5 py-4 text-ink font-bold">
                   {c.ram_used_kb ? (c.ram_used_kb / 1024).toFixed(1) + ' MB' : '-'}
                 </td>
@@ -360,6 +403,19 @@
                       title="Stop"
                     >
                       <Square size={14} />
+                      <Square size={14} />
+                    </button>
+                    <button
+                      on:click={() => handleBackupContainer(c.name)}
+                      disabled={backupInProgress && activeBackupName === c.name}
+                      class="btn-brutal !p-1.5 !rounded-lg text-primary"
+                      title="Export / Backup Container (.tar.gz)"
+                    >
+                      {#if backupInProgress && activeBackupName === c.name}
+                        <Loader2 size={14} class="animate-spin" />
+                      {:else}
+                        <Archive size={14} />
+                      {/if}
                     </button>
                   {:else}
                     <button
@@ -375,6 +431,19 @@
                       title="Start Container"
                     >
                       <Play size={14} />
+                      <Play size={14} />
+                    </button>
+                    <button
+                      on:click={() => handleBackupContainer(c.name)}
+                      disabled={backupInProgress && activeBackupName === c.name}
+                      class="btn-brutal !p-1.5 !rounded-lg text-primary"
+                      title="Export / Backup Container (.tar.gz)"
+                    >
+                      {#if backupInProgress && activeBackupName === c.name}
+                        <Loader2 size={14} class="animate-spin" />
+                      {:else}
+                        <Archive size={14} />
+                      {/if}
                     </button>
                   {/if}
                   <button
@@ -384,6 +453,65 @@
                   >
                     <Trash2 size={14} />
                   </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Port Forwarding Matrix (Proxmox-Style) -->
+  <div class="card-brutal bg-paper p-4 space-y-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <Wifi size={16} class="text-primary" />
+        <h3 class="text-xs font-black uppercase tracking-wider text-ink">Port Forwarding Matrix</h3>
+      </div>
+      <span class="text-[10px] text-muted font-mono">
+        {(containersData?.port_matrix || []).length} Mappings Configured
+      </span>
+    </div>
+
+    {#if (containersData?.port_matrix || []).length === 0}
+      <div class="p-4 rounded-lg border-2 border-dashed border-line bg-panel-alt/50 text-center">
+        <p class="text-[11px] text-muted font-mono">
+          No active port forwards configured. Containers are routed inside isolated bridge (<code class="text-ink">172.28.0.0/16</code>).
+        </p>
+      </div>
+    {:else}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="bg-panel-alt border-b-2 border-line text-muted uppercase text-[9px] font-black tracking-wider select-none">
+            <tr>
+              <th class="px-3 py-2">Host Port (Device)</th>
+              <th class="px-3 py-2">Protocol</th>
+              <th class="px-3 py-2">Container Target</th>
+              <th class="px-3 py-2">Container Port</th>
+              <th class="px-3 py-2">Private IP</th>
+              <th class="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            {#each containersData.port_matrix as p}
+              <tr class="hover:bg-panel-alt/40 transition">
+                <td class="px-3 py-2.5 font-bold text-ink flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full {p.status === 'active' ? 'bg-lime' : 'bg-muted'}"></span>
+                  <span>:{p.host_port}</span>
+                </td>
+                <td class="px-3 py-2.5">
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-panel border border-line text-muted">
+                    {p.protocol}
+                  </span>
+                </td>
+                <td class="px-3 py-2.5 font-sans font-bold text-ink">{p.container_name}</td>
+                <td class="px-3 py-2.5 text-primary font-bold">:{p.container_port}</td>
+                <td class="px-3 py-2.5 text-muted">{p.container_ip || '—'}</td>
+                <td class="px-3 py-2.5 text-right">
+                  <span class="badge-brutal !text-[9px] {p.status === 'active' ? 'bg-lime text-black' : 'bg-panel-alt text-muted'}">
+                    {p.status}
+                  </span>
                 </td>
               </tr>
             {/each}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Activity, Cpu, Users, Layers } from 'lucide-svelte';
+  import { X, Activity, Cpu, Users, Layers, HardDrive, Archive, DownloadCloud, Trash2, Loader2 } from 'lucide-svelte';
   import ServicesTab from './ServicesTab.svelte';
   import ProcessesTab from './ProcessesTab.svelte';
 
@@ -8,7 +8,7 @@
   export let onClose: () => void;
   export let onNavigateTerminal: (containerName: string, user: string) => void;
 
-  let activeTab: 'specs' | 'services' | 'processes' | 'users' = 'specs';
+  let activeTab: 'specs' | 'services' | 'processes' | 'users' | 'backups' = 'specs';
 
   // Services State
   let servicesList: any[] = [];
@@ -23,6 +23,10 @@
   let usersList: string[] = [];
   let usersLoading = false;
 
+  // Backups State
+  let backupsList: any[] = [];
+  let backupsLoading = false;
+  let isBackingUp = false;
   $: if (show && container) {
     activeTab = 'specs';
     if (container.status === 'running' || container.pid > 0) {
@@ -114,6 +118,53 @@
       usersLoading = false;
     }
   }
+  async function loadBackups() {
+    if (!container?.name) return;
+    backupsLoading = true;
+    try {
+      const res = await fetch(`/api/containers/${container.name}/backups`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        backupsList = json.data;
+      }
+    } catch (_) {}
+    finally {
+      backupsLoading = false;
+    }
+  }
+
+  async function createBackupFromModal() {
+    if (!container?.name) return;
+    isBackingUp = true;
+    try {
+      const res = await fetch(`/api/containers/${container.name}/backup`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        await loadBackups();
+      } else {
+        alert('Backup failed: ' + (json.error || 'Unknown error'));
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    } finally {
+      isBackingUp = false;
+    }
+  }
+
+  async function deleteBackupFromModal(filename: string) {
+    if (!confirm(`Delete backup file "${filename}"?`)) return;
+    try {
+      const res = await fetch(`/api/containers/${container.name}/backup?file=${filename}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        await loadBackups();
+      } else {
+        alert('Delete failed: ' + (json.error || 'Unknown error'));
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+  }
 </script>
 
 {#if show && container}
@@ -182,6 +233,18 @@
             <Users size={13} />
             Users
           </button>
+        <button
+          on:click={() => {
+            activeTab = 'backups';
+            loadBackups();
+          }}
+          class="px-3 py-2 border-b-2 transition flex items-center gap-1.5 {activeTab === 'backups'
+            ? 'border-primary text-primary font-black'
+            : 'border-transparent text-muted hover:text-ink'}"
+        >
+          <Archive size={13} />
+          Backups
+        </button>
         {/if}
       </div>
 
@@ -198,12 +261,20 @@
               <span class="font-bold text-ink">{container.uptime || '-'}</span>
             </div>
             <div class="p-2.5 bg-panel-alt rounded border border-line">
+              <span class="text-muted block text-[10px]">Disk Usage</span>
+              <span class="font-bold text-primary">{container.disk_size || '-'}</span>
+            </div>
+            <div class="p-2.5 bg-panel-alt rounded border border-line">
               <span class="text-muted block text-[10px]">Networking</span>
               <span class="font-bold text-ink">{container.networking_mode || container.net || 'nat'}</span>
             </div>
             <div class="p-2.5 bg-panel-alt rounded border border-line">
-              <span class="text-muted block text-[10px]">IP Address</span>
-              <span class="font-bold text-ink">{container.ip || '-'}</span>
+              <span class="text-muted block text-[10px]">Private IP</span>
+              <span class="font-bold text-ink">{container.ip || container.nat_ip || '-'}</span>
+            </div>
+            <div class="p-2.5 bg-panel-alt rounded border border-line sm:col-span-3">
+              <span class="text-muted block text-[10px]">RootFS Storage Path</span>
+              <span class="font-bold text-ink truncate block text-[11px]">{container.rootfs_path || container.rootfs || '-'}</span>
             </div>
           </div>
 
@@ -211,6 +282,86 @@
             <span class="text-muted block text-[10px]">Raw Status JSON</span>
             <pre class="text-[11px] text-ink overflow-x-auto">{JSON.stringify(container, null, 2)}</pre>
           </div>
+
+        {#if activeTab === 'backups'}
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="font-black uppercase text-xs text-ink flex items-center gap-1.5">
+                  <Archive size={14} class="text-primary" /> Container Archives (.tar.gz)
+                </h4>
+                <p class="text-[10px] text-muted">Proxmox-style independent rootfs snapshot & portable tarball</p>
+              </div>
+              <button
+                type="button"
+                on:click={createBackupFromModal}
+                disabled={isBackingUp}
+                class="btn-brutal btn-brutal-primary !py-1.5 !px-3 text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {#if isBackingUp}
+                  <Loader2 size={13} class="animate-spin" />
+                  <span>Creating Backup...</span>
+                {:else}
+                  <Archive size={13} />
+                  <span>Create Backup Now</span>
+                {/if}
+              </button>
+            </div>
+
+            {#if backupsLoading}
+              <div class="p-6 text-center text-muted font-mono flex items-center justify-center gap-2">
+                <Loader2 size={16} class="animate-spin text-primary" /> Loading backups...
+              </div>
+            {:else if backupsList.length === 0}
+              <div class="p-6 rounded-lg border-2 border-dashed border-line bg-panel-alt text-center space-y-1">
+                <p class="font-bold text-ink text-xs">No backups found</p>
+                <p class="text-muted text-[11px]">Click "Create Backup Now" above to generate a full .tar.gz snapshot.</p>
+              </div>
+            {:else}
+              <div class="border-2 border-line rounded-lg overflow-hidden bg-panel">
+                <table class="w-full text-left font-mono text-xs">
+                  <thead class="bg-panel-alt border-b-2 border-line text-[10px] text-muted uppercase font-black">
+                    <tr>
+                      <th class="px-3 py-2">Archive File</th>
+                      <th class="px-3 py-2">Size</th>
+                      <th class="px-3 py-2">Date Created</th>
+                      <th class="px-3 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line">
+                    {#each backupsList as b}
+                      <tr class="hover:bg-panel-alt/50 transition">
+                        <td class="px-3 py-2.5 font-bold text-ink truncate max-w-xs">{b.filename}</td>
+                        <td class="px-3 py-2.5 text-primary font-bold">{b.size}</td>
+                        <td class="px-3 py-2.5 text-muted text-[11px]">{b.mod_time}</td>
+                        <td class="px-3 py-2.5 text-right space-x-2">
+                          <a
+                            href="/api/containers/{container.name}/backup?file={b.filename}"
+                            download={b.filename}
+                            class="btn-brutal !py-1 !px-2 text-[10px] inline-flex items-center gap-1"
+                            title="Download to PC/phone"
+                          >
+                            <DownloadCloud size={11} />
+                            <span>Download</span>
+                          </a>
+                          <button
+                            type="button"
+                            on:click={() => deleteBackupFromModal(b.filename)}
+                            class="btn-brutal !py-1 !px-2 text-[10px] text-red inline-flex items-center gap-1 cursor-pointer"
+                            title="Delete Archive"
+                          >
+                            <Trash2 size={11} />
+                            <span>Delete</span>
+                          </button>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {/if}
+          </div>
+        {/if}
         {/if}
 
         {#if activeTab === 'services'}

@@ -2,11 +2,16 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
+	"github.com/latifangren/droidspaces-webui/internal/runner"
 )
 
 var safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -92,6 +97,82 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 		if action == "users" && r.Method == http.MethodGet {
 			s.handleUsersRoute(w, r, name)
 			return
+		}
+		// Container Backups
+		if action == "backups" && r.Method == http.MethodGet {
+			list, err := s.client.ListBackups(name)
+			if err != nil {
+				s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+				return
+			}
+			s.sendJSON(w, http.StatusOK, list, "")
+			return
+		}
+
+		if action == "backup" {
+			switch r.Method {
+			case http.MethodGet:
+				fileParam := r.URL.Query().Get("file")
+				if fileParam == "" {
+					list, err := s.client.ListBackups(name)
+					if err != nil {
+						s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+						return
+					}
+					s.sendJSON(w, http.StatusOK, list, "")
+					return
+				}
+				cleanName := filepath.Base(fileParam)
+				filePath := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
+				if _, err := os.Stat(filePath); err != nil {
+					s.sendJSON(w, http.StatusNotFound, nil, "backup file not found")
+					return
+				}
+				w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", cleanName))
+				w.Header().Set("Content-Type", "application/gzip")
+				http.ServeFile(w, r, filePath)
+				return
+
+			case http.MethodPost:
+				backupsDir := "/data/local/Droidspaces/Backups"
+				_ = os.MkdirAll(backupsDir, 0755)
+				timestamp := time.Now().Format("20060102_150405")
+				outFilename := fmt.Sprintf("%s_%s.tar.gz", name, timestamp)
+				outPath := filepath.Join(backupsDir, outFilename)
+
+				if err := s.client.Export(name, outPath); err != nil {
+					s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+					return
+				}
+
+				stat, _ := os.Stat(outPath)
+				var sizeBytes int64
+				if stat != nil {
+					sizeBytes = stat.Size()
+				}
+
+				s.sendJSON(w, http.StatusOK, model.ContainerBackupInfo{
+					Filename:  outFilename,
+					Path:      outPath,
+					Size:      runner.FormatBytes(sizeBytes),
+					SizeBytes: sizeBytes,
+					ModTime:   time.Now().Format("2006-01-02 15:04:05"),
+				}, "")
+				return
+
+			case http.MethodDelete:
+				fileParam := r.URL.Query().Get("file")
+				if fileParam == "" {
+					s.sendJSON(w, http.StatusBadRequest, nil, "file parameter required")
+					return
+				}
+				if err := s.client.DeleteBackup(fileParam); err != nil {
+					s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+					return
+				}
+				s.sendJSON(w, http.StatusOK, map[string]string{"message": "backup deleted"}, "")
+				return
+			}
 		}
 
 		// Lifecycle Actions
