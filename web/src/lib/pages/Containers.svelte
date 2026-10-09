@@ -17,11 +17,11 @@
     DownloadCloud,
     Loader2,
   } from 'lucide-svelte';
-
   import CreateModal from '../components/containers/CreateModal.svelte';
   import BootOrderModal from '../components/containers/BootOrderModal.svelte';
   import DetailModal from '../components/containers/DetailModal.svelte';
-
+  import ConfirmModal from '../components/common/ConfirmModal.svelte';
+  import { toast } from '../stores/toast';
   export let onRefresh: () => void;
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let prefillContainer: any = null;
@@ -44,6 +44,13 @@
   let backupInProgress = false;
   let activeBackupName = '';
 
+  // Confirm Modal State
+  let confirmShow = false;
+  let confirmTitle = '';
+  let confirmMessage = '';
+  let confirmButtonText = 'Confirm';
+  let confirmDestructive = false;
+  let confirmAction: () => void = () => {};
   $: if (prefillContainer) {
     showCreateModal = true;
   }
@@ -54,6 +61,12 @@
     ...(containersData?.running || []).map((c: any) => ({ ...c, isRunning: true })),
     ...(containersData?.stopped || []).map((c: any) => ({ ...c, isRunning: false })),
   ];
+
+  function getCpuClass(pct: number): string {
+    if (pct >= 80) return 'text-[#f43f5e] bg-[#f43f5e]/10 border-[#f43f5e]/30';
+    if (pct >= 50) return 'text-[#fbbf24] bg-[#fbbf24]/10 border-[#fbbf24]/30';
+    return 'text-[#94a3b8] bg-panel-alt/60 border-line text-muted';
+  }
 
   $: filteredContainers = allContainers.filter((c: any) => {
     if (activeFilter === 'running') return c.isRunning;
@@ -94,10 +107,10 @@
         selectedContainerDetail = json.data;
         showDetailModal = true;
       } else {
-        alert(json.error || 'Failed to inspect container');
+        toast.error(json.error || 'Failed to inspect container');
       }
     } catch (e: any) {
-      alert('Error inspecting container: ' + e.message);
+      toast.error('Error inspecting container: ' + e.message);
     }
   }
 
@@ -123,82 +136,123 @@
       const json = await res.json();
       if (json.success) {
         showBootModal = false;
+        toast.success('Boot priority settings saved.');
         onRefresh();
       } else {
-        alert('Failed saving boot priorities: ' + json.error);
+        toast.error('Failed saving boot priorities: ' + json.error);
       }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      toast.error('Error: ' + e.message);
     } finally {
       bootSaving = false;
     }
   }
 
   async function stopContainer(cname: string) {
-    if (!confirm(`Stop container "${cname}"?`)) return;
-    try {
-      const res = await fetch(`/api/containers/${cname}/stop`, { method: 'POST' });
-      const json = await res.json();
-      if (json.success) onRefresh();
-      else alert(json.error || 'Failed to stop container');
-    } catch (e: any) {
-      alert('Error: ' + e.message);
-    }
+    confirmTitle = 'Stop Container';
+    confirmMessage = `Are you sure you want to stop container "${cname}"?`;
+    confirmButtonText = 'Stop Container';
+    confirmDestructive = false;
+    confirmAction = async () => {
+      confirmShow = false;
+      toast.info(`Stopping "${cname}"...`);
+      try {
+        const res = await fetch(`/api/containers/${cname}/stop`, { method: 'POST' });
+        const json = await res.json();
+        if (json.success) {
+          toast.success(`"${cname}" stopped.`);
+          onRefresh();
+        } else {
+          toast.error(json.error || 'Failed to stop container');
+        }
+      } catch (e: any) {
+        toast.error('Error: ' + e.message);
+      }
+    };
+    confirmShow = true;
   }
 
   async function restartContainer(cname: string) {
+    toast.info(`Restarting "${cname}"...`);
     try {
       const res = await fetch(`/api/containers/${cname}/restart`, { method: 'POST' });
       const json = await res.json();
-      if (json.success) onRefresh();
-      else alert(json.error || 'Failed to restart container');
+      if (json.success) {
+        toast.success(`"${cname}" restarted.`);
+        onRefresh();
+      } else {
+        toast.error(json.error || 'Failed to restart container');
+      }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      toast.error('Error: ' + e.message);
     }
   }
 
   async function startContainer(cname: string) {
+    toast.info(`Starting "${cname}"...`);
     try {
       const res = await fetch(`/api/containers/${cname}/start`, { method: 'POST' });
       const json = await res.json();
-      if (json.success) onRefresh();
-      else alert(json.error || 'Failed to start container');
+      if (json.success) {
+        toast.success(`"${cname}" started.`);
+        onRefresh();
+      } else {
+        toast.error(json.error || 'Failed to start container');
+      }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      toast.error('Error: ' + e.message);
     }
   }
 
   async function deleteContainer(cname: string) {
-    if (!confirm(`Permanently delete container "${cname}" and all its workspace data?`)) return;
-    try {
-      const res = await fetch(`/api/containers/${cname}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.success) onRefresh();
-      else alert(json.error || 'Failed to delete container');
-    } catch (e: any) {
-      alert('Error: ' + e.message);
-    }
-  }
-  async function handleBackupContainer(cname: string) {
-    if (!confirm(`Create full backup archive (.tar.gz) of container "${cname}"?`)) return;
-    backupInProgress = true;
-    activeBackupName = cname;
-    try {
-      const res = await fetch(`/api/containers/${cname}/backup`, { method: 'POST' });
-      const json = await res.json();
-      if (json.success && json.data) {
-        if (confirm(`Backup created successfully!\n\nFile: ${json.data.filename}\nSize: ${json.data.size}\n\nDownload archive now?`)) {
-          window.location.href = `/api/containers/${cname}/backup?file=${json.data.filename}`;
+    confirmTitle = 'Delete Container';
+    confirmMessage = `Permanently delete container "${cname}"? All files, packages, and workspace configurations will be permanently removed.`;
+    confirmButtonText = 'Delete Container';
+    confirmDestructive = true;
+    confirmAction = async () => {
+      confirmShow = false;
+      try {
+        const res = await fetch(`/api/containers/${cname}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (json.success) {
+          toast.success(`Container "${cname}" deleted.`);
+          onRefresh();
+        } else {
+          toast.error(json.error || 'Failed to delete container');
         }
-      } else {
-        alert('Backup failed: ' + (json.error || 'Unknown error'));
+      } catch (e: any) {
+        toast.error('Error: ' + e.message);
       }
-    } catch (e: any) {
-      alert('Backup failed: ' + e.message);
-    } finally {
-      backupInProgress = false;
-      activeBackupName = '';
-    }
+    };
+    confirmShow = true;
+  }
+
+  async function handleBackupContainer(cname: string) {
+    confirmTitle = 'Create Full Backup (.tar.gz)';
+    confirmMessage = `Export container "${cname}" to a portable .tar.gz archive? The backup file will be saved to /data/local/Droidspaces/Backups and ready for download.`;
+    confirmButtonText = 'Start Backup';
+    confirmDestructive = false;
+    confirmAction = async () => {
+      confirmShow = false;
+      backupInProgress = true;
+      activeBackupName = cname;
+      toast.info(`Creating backup for "${cname}"...`);
+      try {
+        const res = await fetch(`/api/containers/${cname}/backup`, { method: 'POST' });
+        const json = await res.json();
+        if (json.success && json.data) {
+          toast.success(`Backup created: ${json.data.filename} (${json.data.size})`);
+        } else {
+          toast.error('Backup failed: ' + (json.error || 'Unknown error'));
+        }
+      } catch (e: any) {
+        toast.error('Backup failed: ' + e.message);
+      } finally {
+        backupInProgress = false;
+        activeBackupName = '';
+      }
+    };
+    confirmShow = true;
   }
 
   async function handleCreateContainer(payload: any) {
@@ -213,9 +267,10 @@
       if (json.success) {
         showCreateModal = false;
         prefillContainer = null;
+        toast.success('Container created and started.');
         onRefresh();
       } else {
-        alert('Failed: ' + (json.error || 'Creation failed'));
+        toast.error('Failed: ' + (json.error || 'Creation failed'));
       }
     } catch (e: any) {
       alert('Error: ' + e.message);
@@ -331,6 +386,7 @@
           <tbody class="divide-y-2 divide-line font-mono">
             {#each filteredContainers as c}
               {@const isRunning = c.isRunning}
+              {@const cpuVal = c.cpu_percent || 0}
               <tr class="hover:bg-panel-alt/40 transition">
                 <td class="px-5 py-4 font-bold text-ink">
                   <div class="flex items-center gap-2">
@@ -364,55 +420,59 @@
                   </div>
                 </td>
                 <td class="px-5 py-4 text-muted">{c.pid || '-'}</td>
-                <td class="px-5 py-4 text-ink font-bold">
-                  <span class="badge-brutal !text-[10px] bg-panel-alt border border-line text-ink">
+                <td class="px-5 py-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/30">
                     {c.disk_size || '—'}
                   </span>
                 </td>
-                <td class="px-5 py-4 text-ink font-bold">
-                  {c.ram_used_kb ? (c.ram_used_kb / 1024).toFixed(1) + ' MB' : '-'}
+                <td class="px-5 py-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold text-[#34d399] bg-[#34d399]/10 border border-[#34d399]/30">
+                    {c.ram_used_kb ? (c.ram_used_kb / 1024).toFixed(1) + ' MB' : '—'}
+                  </span>
                 </td>
-                <td class="px-5 py-4 text-ink font-bold">
-                  {c.cpu_percent ? c.cpu_percent.toFixed(1) + '%' : isRunning ? '0.0%' : '-'}
+                <td class="px-5 py-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold border {getCpuClass(cpuVal)}">
+                    {c.cpu_percent ? c.cpu_percent.toFixed(1) + '%' : isRunning ? '0.0%' : '—'}
+                  </span>
                 </td>
                 <td class="px-5 py-4 text-right space-x-1.5 whitespace-nowrap">
                   {#if isRunning}
                     <button
                       on:click={() => inspectContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#818cf8] hover:border-[#818cf8] hover:bg-[#818cf8]/10 transition"
                       title="Manage Services, Processes & Specs"
                     >
                       <Layers size={14} />
                     </button>
                     <button
                       on:click={() => onNavigate('terminal', { container: c.name })}
-                      class="btn-brutal !p-1.5 !rounded-lg"
-                      title="Open Terminal"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#fbbf24] border-[#fbbf24]/50 bg-[#fbbf24]/10 hover:border-[#fbbf24] hover:bg-[#fbbf24]/20 transition"
+                      title="Open Web Terminal"
                     >
                       <TerminalIcon size={14} />
                     </button>
                     <button
                       on:click={() => restartContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg"
-                      title="Restart"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#38bdf8] hover:border-[#38bdf8] hover:bg-[#38bdf8]/10 transition"
+                      title="Restart Container"
                     >
                       <RotateCcw size={14} />
                     </button>
                     <button
                       on:click={() => stopContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg text-red"
-                      title="Stop"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#fb923c] hover:border-[#fb923c] hover:bg-[#fb923c]/10 transition"
+                      title="Stop Container"
                     >
                       <Square size={14} />
                     </button>
                     <button
                       on:click={() => handleBackupContainer(c.name)}
                       disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg text-primary"
-                      title="Export / Backup Container (.tar.gz)"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#06b6d4] hover:border-[#06b6d4] hover:bg-[#06b6d4]/10 transition disabled:opacity-50"
+                      title="Export Container Backup (.tar.gz)"
                     >
                       {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin" />
+                        <Loader2 size={14} class="animate-spin text-[#06b6d4]" />
                       {:else}
                         <Archive size={14} />
                       {/if}
@@ -420,8 +480,8 @@
                   {:else}
                     <button
                       on:click={() => inspectContainer(c.name)}
-                      class="btn-brutal !p-1.5 !rounded-lg"
-                      title="View Specs"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#818cf8] hover:border-[#818cf8] hover:bg-[#818cf8]/10 transition"
+                      title="View Specs & Backups"
                     >
                       <Info size={14} />
                     </button>
@@ -435,11 +495,11 @@
                     <button
                       on:click={() => handleBackupContainer(c.name)}
                       disabled={backupInProgress && activeBackupName === c.name}
-                      class="btn-brutal !p-1.5 !rounded-lg text-primary"
-                      title="Export / Backup Container (.tar.gz)"
+                      class="btn-brutal !p-1.5 !rounded-lg text-[#94a3b8] hover:text-[#06b6d4] hover:border-[#06b6d4] hover:bg-[#06b6d4]/10 transition disabled:opacity-50"
+                      title="Export Container Backup (.tar.gz)"
                     >
                       {#if backupInProgress && activeBackupName === c.name}
-                        <Loader2 size={14} class="animate-spin" />
+                        <Loader2 size={14} class="animate-spin text-[#06b6d4]" />
                       {:else}
                         <Archive size={14} />
                       {/if}
@@ -447,7 +507,7 @@
                   {/if}
                   <button
                     on:click={() => deleteContainer(c.name)}
-                    class="btn-brutal !p-1.5 !rounded-lg text-muted hover:text-red hover:border-red"
+                    class="btn-brutal !p-1.5 !rounded-lg text-[#f87171]/60 hover:text-[#f87171] hover:border-[#f87171] hover:bg-[#f87171]/10 transition"
                     title="Delete Container"
                   >
                     <Trash2 size={14} />
@@ -550,5 +610,16 @@
     container={selectedContainerDetail}
     onClose={() => (showDetailModal = false)}
     onNavigateTerminal={(cname, user) => onNavigate('terminal', { container: cname, user })}
+  />
+
+  <!-- Action Confirm Modal -->
+  <ConfirmModal
+    show={confirmShow}
+    title={confirmTitle}
+    message={confirmMessage}
+    confirmText={confirmButtonText}
+    destructive={confirmDestructive}
+    onConfirm={confirmAction}
+    onCancel={() => (confirmShow = false)}
   />
 </div>

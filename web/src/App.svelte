@@ -11,6 +11,7 @@
   import Templates from './lib/pages/Templates.svelte';
   import Settings from './lib/pages/Settings.svelte';
   import LoginPage from './lib/pages/LoginPage.svelte';
+  import ToastContainer from './lib/components/common/ToastContainer.svelte';
 
   let isAuthenticated = false;
   let authChecked = false;
@@ -213,5 +214,8 @@
 
   <!-- Mobile Floating Dock -->
   <FloatingDock {currentRoute} onNavigate={navigate} />
+
+  <!-- Global Neo-Brutalist Toasts -->
+  <ToastContainer />
 </div>
 {/if}
