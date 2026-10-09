@@ -40,9 +40,17 @@
     localStorage.setItem('ds_color', color);
   }
 
+  function authHeaders(): Record<string, string> {
+    const token = localStorage.getItem('ds_token');
+    if (token) {
+      return { 'Authorization': `Bearer ${token}` };
+    }
+    return {};
+  }
+
   async function checkAuth() {
     try {
-      const res = await fetch('/api/auth/status');
+      const res = await fetch('/api/auth/status', { headers: authHeaders() });
       const json = await res.json();
       if (json.success && json.data && json.data.authenticated) {
         isAuthenticated = true;
@@ -59,8 +67,9 @@
 
   async function logout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
     } catch (_) {}
+    localStorage.removeItem('ds_token');
     isAuthenticated = false;
   }
 
@@ -68,9 +77,10 @@
     if (!isAuthenticated) return;
     refreshing = true;
     try {
+      const headers = authHeaders();
       const [resStatus, resContainers] = await Promise.all([
-        fetch('/api/status'),
-        fetch('/api/containers'),
+        fetch('/api/status', { headers }),
+        fetch('/api/containers', { headers }),
       ]);
 
       if (resStatus.status === 401 || resContainers.status === 401) {

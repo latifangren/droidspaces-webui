@@ -26,6 +26,9 @@
 
       const data = await res.json();
       if (res.ok && data.success) {
+        if (data.data && data.data.token) {
+          localStorage.setItem('ds_token', data.data.token);
+        }
         onLoginSuccess();
       } else {
         errorMsg = data.error || 'Password incorrect';

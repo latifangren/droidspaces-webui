@@ -103,7 +103,9 @@
   function getWsUrl(): string {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${proto}//${host}/api/ws/terminal?session=${encodeURIComponent(sessionId)}`;
+    const token = localStorage.getItem('ds_token');
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    return `${proto}//${host}/api/ws/terminal?session=${encodeURIComponent(sessionId)}${tokenParam}`;
   }
 
   function connectWebSocket() {

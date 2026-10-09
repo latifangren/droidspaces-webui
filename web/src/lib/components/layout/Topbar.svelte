@@ -11,12 +11,13 @@
     Smartphone,
     LogOut,
   } from 'lucide-svelte';
+
+  export let port: number = 84;
   export let hardware: any = {};
   export let onRefresh: () => void;
   export let refreshing: boolean = false;
   export let theme: string = 'dark';
   export let onToggleTheme: () => void;
-  export let colorPalette: string = 'default';
   export let onSetColor: (color: string) => void;
   export let onLogout: (() => void) | undefined = undefined;
 
