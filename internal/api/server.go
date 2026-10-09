@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -140,7 +139,7 @@ func (s *Server) handleStaticEmbed(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if path == "index.html" {
+	if path == "index.html" || strings.HasSuffix(path, ".html") {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
@@ -148,11 +147,12 @@ func (s *Server) handleStaticEmbed(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.WriteHeader(http.StatusOK)
-	_, _ = io.WriteString(w, string(data))
+	_, _ = w.Write(data)
 }
 
 func (s *Server) sendJSON(w http.ResponseWriter, status int, data interface{}, errMsg string) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.WriteHeader(status)
 
 	resp := map[string]interface{}{

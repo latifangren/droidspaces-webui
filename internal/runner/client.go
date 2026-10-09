@@ -103,7 +103,8 @@ func (c *Client) Show() (*model.ShowResult, error) {
 	}
 
 	var res model.ShowResult
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
+	cleanJSON := ExtractJSON(out)
+	if err := json.Unmarshal([]byte(cleanJSON), &res); err != nil {
 		return nil, fmt.Errorf("failed to parse show output: %w", err)
 	}
 
@@ -212,7 +213,8 @@ func (c *Client) Info(name string) (map[string]interface{}, error) {
 	}
 
 	var res map[string]interface{}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
+	cleanJSON := ExtractJSON(out)
+	if err := json.Unmarshal([]byte(cleanJSON), &res); err != nil {
 		return nil, fmt.Errorf("failed to parse info output: %w", err)
 	}
 	if cfg, err := config.ReadContainerConfig(name); err == nil {

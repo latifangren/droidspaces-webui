@@ -27,6 +27,18 @@ var (
 	diskUsageCacheMu sync.RWMutex
 )
 
+// ExtractJSON safely isolates the first outer JSON object {...}
+// to strip any ANSI escape codes or command banners printed by the runtime.
+func ExtractJSON(s string) string {
+	s = strings.TrimSpace(s)
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start != -1 && end != -1 && end > start {
+		return s[start : end+1]
+	}
+	return s
+}
+
 // FormatBytes converts raw byte count to human-readable string (e.g. 2.1 GB, 450 MB)
 func FormatBytes(b int64) string {
 	if b <= 0 {

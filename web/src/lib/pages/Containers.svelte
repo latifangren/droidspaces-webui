@@ -325,6 +325,7 @@
               </th>
               <th class="px-5 py-3">Memory</th>
               <th class="px-5 py-3">CPU</th>
+              <th class="px-5 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y-2 divide-line font-mono">
@@ -403,7 +404,6 @@
                       title="Stop"
                     >
                       <Square size={14} />
-                      <Square size={14} />
                     </button>
                     <button
                       on:click={() => handleBackupContainer(c.name)}
@@ -430,7 +430,6 @@
                       class="btn-brutal btn-brutal-primary !p-1.5 !rounded-lg text-black"
                       title="Start Container"
                     >
-                      <Play size={14} />
                       <Play size={14} />
                     </button>
                     <button
