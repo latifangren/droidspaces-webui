@@ -194,6 +194,7 @@ func TestManagerOperations(t *testing.T) {
 
 	// Try creating a host session (might succeed or fail depending on pty support on platform)
 	_, _ = mgr.CreateSession("host", "", "", "Host Term")
+	mgr.CloseAll()
 
 	// Directly register mock session into manager to test management functions
 	rPipe, wPipe, _ := os.Pipe()

@@ -222,9 +222,8 @@ func TestServicesManagement(t *testing.T) {
 func TestBackupsAndExport(t *testing.T) {
 	c := newTestClient()
 	tmpDir := t.TempDir()
-	origEnv := os.Getenv("DROIDSPACES_CONTAINERS_DIR")
-	defer os.Setenv("DROIDSPACES_CONTAINERS_DIR", origEnv)
-	os.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+	t.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+	t.Setenv("DROIDSPACES_BACKUPS_DIR", tmpDir)
 
 	// Create container with config and rootfs
 	boxDir := filepath.Join(tmpDir, "box-alpha")
@@ -433,6 +432,7 @@ func TestRestoreEndToEndAndSparseClone(t *testing.T) {
 	origBackups := backupsDir
 	tmpBackups := filepath.Join(tmpDir, "Backups")
 	_ = os.MkdirAll(tmpBackups, 0755)
+	t.Setenv("DROIDSPACES_BACKUPS_DIR", tmpBackups)
 	backupsDir = tmpBackups
 	defer func() {
 		backupsDir = origBackups
@@ -563,6 +563,7 @@ func TestRestoreUncompressedAndAutoStart(t *testing.T) {
 	origBackups := backupsDir
 	tmpBackups := filepath.Join(tmpDir, "Backups")
 	_ = os.MkdirAll(tmpBackups, 0755)
+	t.Setenv("DROIDSPACES_BACKUPS_DIR", tmpBackups)
 	backupsDir = tmpBackups
 	defer func() {
 		backupsDir = origBackups

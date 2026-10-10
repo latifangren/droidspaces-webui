@@ -19,6 +19,30 @@ var (
 	safeContainerNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	backupsDir             = "/data/local/Droidspaces/Backups"
 )
+
+// GetBackupsDir returns directory where backups reside, supporting env overrides and fallbacks.
+func GetBackupsDir() string {
+	if custom := os.Getenv("DROIDSPACES_BACKUPS_DIR"); custom != "" {
+		_ = os.MkdirAll(custom, 0755)
+		return custom
+	}
+	if backupsDir != "" && backupsDir != "/data/local/Droidspaces/Backups" {
+		_ = os.MkdirAll(backupsDir, 0755)
+		return backupsDir
+	}
+	dirs := []string{
+		"/data/local/Droidspaces/Backups",
+		"/data/adb/droidspaces/Backups",
+		"/var/lib/Droidspaces/Backups",
+		"/tmp/droidspaces/Backups",
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0755); err == nil {
+			return d
+		}
+	}
+	return "/tmp/droidspaces/Backups"
+}
 func generateUUID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -202,7 +226,8 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return fmt.Errorf("invalid archive format: must be .tar.gz or .tar")
 	}
 
-	backupPath := filepath.Join(backupsDir, cleanFilename)
+	bDir := GetBackupsDir()
+	backupPath := filepath.Join(bDir, cleanFilename)
 	if _, err := os.Stat(backupPath); err != nil {
 		return fmt.Errorf("backup archive not found at %s", backupPath)
 	}
@@ -212,6 +237,39 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return fmt.Errorf("no containers directory configured")
 	}
 	targetDir := filepath.Join(dirs[0], req.TargetName)
+
+	tarFlag := "-xzf"
+	if strings.HasSuffix(cleanFilename, ".tar") {
+		tarFlag = "-xf"
+	}
+
+	extractTar := func(destDir string) error {
+		extractCmd := exec.Command("tar", tarFlag, backupPath, "-C", destDir)
+		out, err := extractCmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		bbCandidates := []string{
+			"/data/local/Droidspaces/bin/busybox",
+			"/data/adb/ksu/bin/busybox",
+			"/data/adb/magisk/busybox",
+			"busybox",
+		}
+		for _, bb := range bbCandidates {
+			if _, errStat := os.Stat(bb); errStat == nil {
+				bbCmd := exec.Command(bb, "tar", tarFlag, backupPath, "-C", destDir)
+				if _, bbErr := bbCmd.CombinedOutput(); bbErr == nil {
+					return nil
+				}
+			} else if p, errLook := exec.LookPath(bb); errLook == nil {
+				bbCmd := exec.Command(p, "tar", tarFlag, backupPath, "-C", destDir)
+				if _, bbErr := bbCmd.CombinedOutput(); bbErr == nil {
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("restore extraction failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
 
 	if req.Overwrite {
 		// Stop if running
@@ -227,12 +285,8 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		}
 
 		_ = os.MkdirAll(rootfsDir, 0755)
-		extractCmd := exec.Command("tar", "-xzf", backupPath, "-C", rootfsDir)
-		if out, err := extractCmd.CombinedOutput(); err != nil {
-			bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "tar", "-xzf", backupPath, "-C", rootfsDir)
-			if bbOut, bbErr := bbCmd.CombinedOutput(); bbErr != nil {
-				return fmt.Errorf("restore extraction failed: %v (%s / %s)", bbErr, string(out), string(bbOut))
-			}
+		if err := extractTar(rootfsDir); err != nil {
+			return err
 		}
 
 		if req.AutoStart {
@@ -251,13 +305,9 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 		return fmt.Errorf("failed to create target rootfs directory: %w", err)
 	}
 
-	extractCmd := exec.Command("tar", "-xzf", backupPath, "-C", targetRootFS)
-	if out, err := extractCmd.CombinedOutput(); err != nil {
-		bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "tar", "-xzf", backupPath, "-C", targetRootFS)
-		if bbOut, bbErr := bbCmd.CombinedOutput(); bbErr != nil {
-			_ = os.RemoveAll(targetDir)
-			return fmt.Errorf("restore extraction failed: %v (%s / %s)", bbErr, string(out), string(bbOut))
-		}
+	if err := extractTar(targetRootFS); err != nil {
+		_ = os.RemoveAll(targetDir)
+		return err
 	}
 
 	// Allocate a safe unique IP

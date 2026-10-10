@@ -598,10 +598,8 @@ func (c *Client) Export(name, outputPath string) error {
 }
 
 func (c *Client) ListBackups(name string) ([]model.ContainerBackupInfo, error) {
-	_ = os.MkdirAll(backupsDir, 0755)
-	_ = os.MkdirAll(backupsDir, 0755)
-
-	entries, err := os.ReadDir(backupsDir)
+	bDir := GetBackupsDir()
+	entries, err := os.ReadDir(bDir)
 	if err != nil {
 		return nil, err
 	}
@@ -640,7 +638,8 @@ func (c *Client) DeleteBackup(filename string) error {
 	if !strings.HasSuffix(cleanName, ".tar.gz") && !strings.HasSuffix(cleanName, ".tar") {
 		return fmt.Errorf("invalid backup filename")
 	}
-	target := filepath.Join(backupsDir, cleanName)
+	bDir := GetBackupsDir()
+	target := filepath.Join(bDir, cleanName)
 	return os.Remove(target)
 }
 

@@ -288,7 +288,8 @@ func (s *Server) handleBackupDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cleanName := filepath.Base(fileParam)
-	filePath := filepath.Join("/data/local/Droidspaces/Backups", cleanName)
+	bDir := runner.GetBackupsDir()
+	filePath := filepath.Join(bDir, cleanName)
 	if _, err := os.Stat(filePath); err != nil {
 		s.sendJSON(w, http.StatusNotFound, nil, "backup file not found")
 		return

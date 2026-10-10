@@ -24,10 +24,12 @@ func setupTestServer(t *testing.T) (*Server, string, string) {
 	t.Setenv("DROIDSPACES_ROOTFS_DIR", filepath.Join(tmpDir, "rootfs"))
 	t.Setenv("DROIDSPACES_LOGS_DIR", filepath.Join(tmpDir, "Logs"))
 	t.Setenv("DROIDSPACES_AUTH_FILE", filepath.Join(tmpDir, ".webui_auth"))
+	t.Setenv("DROIDSPACES_BACKUPS_DIR", filepath.Join(tmpDir, "Backups"))
 
 	_ = os.MkdirAll(filepath.Join(tmpDir, "Containers"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, "rootfs"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, "Logs"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "Backups"), 0755)
 
 	s := NewServer(8080)
 	token, _ := s.authMgr.CreateSession()
@@ -615,7 +617,7 @@ func TestLifecycleRoutesDeep(t *testing.T) {
 	_ = doRequest(h, token, "GET", "/api/containers/test-del-box/services/ssh/logs", nil)
 
 	// 9. Backup download real file
-	backupDir := "/data/local/Droidspaces/Backups"
+	backupDir := filepath.Join(tmpDir, "Backups")
 	_ = os.MkdirAll(backupDir, 0755)
 	_ = os.WriteFile(filepath.Join(backupDir, "dl_test.tar.gz"), []byte("mock-data"), 0644)
 	wDl := doRequest(h, token, "GET", "/api/backups/download?file=dl_test.tar.gz", nil)
