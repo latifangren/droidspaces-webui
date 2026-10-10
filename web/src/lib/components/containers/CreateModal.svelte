@@ -32,6 +32,8 @@
   let rootfs = '';
   let rootfsImg = '';
   let net = 'nat';
+  let macvlanParent = '';
+  let macvlanMode = 'bridge';
   let natIP = '';
   let upstream = '';
   let ports = '';
@@ -534,6 +536,42 @@
                   placeholder="10.0.3.15"
                   class="input-brutal w-full font-mono text-xs"
                 />
+              </div>
+            {/if}
+
+            {#if net === 'macvlan'}
+              <div class="col-span-full grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-paper-dark border-2 border-line rounded">
+                <div>
+                  <label class="label-brutal">Macvlan Parent Interface <span class="text-accent">*</span></label>
+                  {#if hostInterfaces.length > 0}
+                    <select bind:value={macvlanParent} class="input-brutal w-full font-mono text-[11px]">
+                      <option value="">Select Parent NIC (e.g. eth0, usb0)</option>
+                      {#each hostInterfaces as ifi}
+                        <option value={ifi.name}>
+                          {ifi.name} ({ifi.type.toUpperCase()}{ifi.ip ? ' - ' + ifi.ip : ''})
+                        </option>
+                      {/each}
+                    </select>
+                  {:else}
+                    <input
+                      type="text"
+                      bind:value={macvlanParent}
+                      placeholder="eth0, usb0"
+                      class="input-brutal w-full font-mono text-xs"
+                    />
+                  {/if}
+                  <p class="text-[10px] text-muted mt-1">Host NIC to attach to (required). Requires Ethernet or USB NIC.</p>
+                </div>
+                <div>
+                  <label class="label-brutal">Macvlan Mode</label>
+                  <select bind:value={macvlanMode} class="input-brutal w-full">
+                    <option value="bridge">bridge (Default - containers & LAN communicate)</option>
+                    <option value="private">private (No inter-macvlan communication)</option>
+                    <option value="vepa">vepa (Virtual Ethernet Port Aggregator)</option>
+                    <option value="passthru">passthru (Dedicated 1-to-1 NIC mapping)</option>
+                  </select>
+                  <p class="text-[10px] text-muted mt-1">Traffic policy across host and physical network switch.</p>
+                </div>
               </div>
             {/if}
           </div>

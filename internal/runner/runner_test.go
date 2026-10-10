@@ -625,3 +625,14 @@ func TestProcessesEdgeCases(t *testing.T) {
 		t.Errorf("expected ps aux parse to succeed: %v, procs=%+v", err, procsAux)
 	}
 }
+func TestStartMacvlanFlags(t *testing.T) {
+	c := newTestClient()
+	req := model.StartRequest{
+		Name:          "macvlan-box",
+		RootFS:        "/tmp/rootfs",
+		Net:           "macvlan",
+		MacvlanParent: "eth0",
+		MacvlanMode:   "bridge",
+	}
+	_ = c.Start(req)
+}

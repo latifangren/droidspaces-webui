@@ -30,6 +30,9 @@ type ContainerSummary struct {
 	DiskSize          string   `json:"disk_size,omitempty"`
 	DiskSizeBytes     int64    `json:"disk_size_bytes,omitempty"`
 	PortMappings      []string `json:"port_mappings,omitempty"`
+	Net               string   `json:"net,omitempty"`
+	MacvlanParent     string   `json:"macvlan_parent,omitempty"`
+	MacvlanMode       string   `json:"macvlan_mode,omitempty"`
 }
 
 type PortMatrixEntry struct {
@@ -55,7 +58,9 @@ type StartRequest struct {
 	RootFSImg         string   `json:"rootfs_img,omitempty"`
 	Hostname          string   `json:"hostname,omitempty"`
 	Conf              string   `json:"conf,omitempty"`
-	Net               string   `json:"net,omitempty"` // host, nat, none, gateway
+	Net               string   `json:"net,omitempty"` // host, nat, none, gateway, macvlan
+	MacvlanParent     string   `json:"macvlan_parent,omitempty"`
+	MacvlanMode       string   `json:"macvlan_mode,omitempty"`
 	Gateway           string   `json:"gateway,omitempty"`
 	GatewayNet        string   `json:"gateway_net,omitempty"`
 	GatewayIface      string   `json:"gateway_iface,omitempty"`

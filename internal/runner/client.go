@@ -150,6 +150,9 @@ func (c *Client) Show() (*model.ShowResult, error) {
 						item.IP = cfgIP
 					}
 				}
+				item.Net = cfg["net"]
+				item.MacvlanParent = cfg["macvlan_parent"]
+				item.MacvlanMode = cfg["macvlan_mode"]
 			}
 			if item.RootFS != "" {
 				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
@@ -200,6 +203,9 @@ func (c *Client) Show() (*model.ShowResult, error) {
 					rawPorts = cfg["port"]
 				}
 				stoppedSummary.PortMappings = ParsePortMappings(rawPorts)
+				stoppedSummary.Net = cfg["net"]
+				stoppedSummary.MacvlanParent = cfg["macvlan_parent"]
+				stoppedSummary.MacvlanMode = cfg["macvlan_mode"]
 			}
 			if stoppedSummary.RootFS != "" {
 				stoppedSummary.DiskSize, stoppedSummary.DiskSizeBytes = GetContainerDiskSize(stoppedSummary.RootFS)
@@ -328,6 +334,12 @@ func (c *Client) Start(req model.StartRequest) error {
 	}
 	if req.Net != "" {
 		args = append(args, "--net="+req.Net)
+	}
+	if req.MacvlanParent != "" {
+		args = append(args, "--macvlan-parent="+req.MacvlanParent)
+	}
+	if req.MacvlanMode != "" {
+		args = append(args, "--macvlan-mode="+req.MacvlanMode)
 	}
 	if req.Gateway != "" {
 		args = append(args, "--gateway="+req.Gateway)

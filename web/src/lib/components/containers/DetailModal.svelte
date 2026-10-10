@@ -266,7 +266,10 @@
             </div>
             <div class="p-2.5 bg-panel-alt rounded border border-line">
               <span class="text-muted block text-[10px]">Networking</span>
-              <span class="font-bold text-ink">{container.networking_mode || container.net || 'nat'}</span>
+              <span class="font-bold text-ink uppercase">{container.networking_mode || container.net || 'nat'}</span>
+              {#if (container.networking_mode === 'macvlan' || container.net === 'macvlan') && container.macvlan_parent}
+                <span class="text-[10px] text-muted block mt-0.5">NIC: {container.macvlan_parent} ({container.macvlan_mode || 'bridge'})</span>
+              {/if}
             </div>
             <div class="p-2.5 bg-panel-alt rounded border border-line">
               <span class="text-muted block text-[10px]">Private IP</span>
