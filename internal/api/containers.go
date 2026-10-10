@@ -102,8 +102,11 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 		if action == "backups" && r.Method == http.MethodGet {
 			list, err := s.client.ListBackups(name)
 			if err != nil {
-				s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+				s.sendJSON(w, http.StatusOK, []model.ContainerBackupInfo{}, "")
 				return
+			}
+			if list == nil {
+				list = []model.ContainerBackupInfo{}
 			}
 			s.sendJSON(w, http.StatusOK, list, "")
 			return
@@ -116,8 +119,11 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 				if fileParam == "" {
 					list, err := s.client.ListBackups(name)
 					if err != nil {
-						s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+						s.sendJSON(w, http.StatusOK, []model.ContainerBackupInfo{}, "")
 						return
+					}
+					if list == nil {
+						list = []model.ContainerBackupInfo{}
 					}
 					s.sendJSON(w, http.StatusOK, list, "")
 					return
@@ -261,8 +267,11 @@ func (s *Server) handleAllBackups(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		list, err := s.client.ListAllBackups()
 		if err != nil {
-			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+			s.sendJSON(w, http.StatusOK, []model.ContainerBackupInfo{}, "")
 			return
+		}
+		if list == nil {
+			list = []model.ContainerBackupInfo{}
 		}
 		s.sendJSON(w, http.StatusOK, list, "")
 	case http.MethodDelete:
@@ -272,6 +281,10 @@ func (s *Server) handleAllBackups(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.client.DeleteBackup(fileParam); err != nil {
+			if os.IsNotExist(err) {
+				s.sendJSON(w, http.StatusNotFound, nil, "backup file not found")
+				return
+			}
 			s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
 			return
 		}

@@ -776,3 +776,30 @@ func TestContainerActionErrors(t *testing.T) {
 		h.ServeHTTP(wBad, reqBad)
 	}
 }
+func TestBackupsEmptyOrMissingDirGraceful(t *testing.T) {
+	s, _, token := setupTestServer(t)
+	h := s.Handler()
+
+	// Point to completely non-existent directory
+	nonExistent := filepath.Join(t.TempDir(), "does-not-exist", "deep")
+	t.Setenv("DROIDSPACES_BACKUPS_DIR", nonExistent)
+
+	// GET /api/backups must return 200 OK and empty array []
+	w := doRequest(h, token, "GET", "/api/backups", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /api/backups with missing dir, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp model.APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected success true, got false")
+	}
+
+	// GET /api/containers/{name}/backups must return 200 OK and empty array []
+	wBox := doRequest(h, token, "GET", "/api/containers/test-box/backups", nil)
+	if wBox.Code != http.StatusOK {
+		t.Fatalf("expected 200 for container backups with missing dir, got %d: %s", wBox.Code, wBox.Body.String())
+	}
+}

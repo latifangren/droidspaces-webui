@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -599,13 +598,15 @@ func (c *Client) Export(name, outputPath string) error {
 
 func (c *Client) ListBackups(name string) ([]model.ContainerBackupInfo, error) {
 	bDir := GetBackupsDir()
+	_ = os.MkdirAll(bDir, 0755)
+
 	entries, err := os.ReadDir(bDir)
 	if err != nil {
-		return nil, err
+		return []model.ContainerBackupInfo{}, nil
 	}
 
 	prefix := name + "_"
-	var list []model.ContainerBackupInfo
+	list := make([]model.ContainerBackupInfo, 0)
 
 	for _, ent := range entries {
 		if ent.IsDir() {
@@ -619,40 +620,42 @@ func (c *Client) ListBackups(name string) ([]model.ContainerBackupInfo, error) {
 			}
 			list = append(list, model.ContainerBackupInfo{
 				Filename:  fname,
-				Path:      filepath.Join(backupsDir, fname),
+				Path:      filepath.Join(bDir, fname),
 				Size:      FormatBytes(info.Size()),
 				SizeBytes: info.Size(),
 				ModTime:   info.ModTime().Format("2006-01-02 15:04:05"),
 			})
 		}
 	}
-
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].ModTime > list[j].ModTime
-	})
 	return list, nil
 }
 
 func (c *Client) DeleteBackup(filename string) error {
 	cleanName := filepath.Base(filename)
-	if !strings.HasSuffix(cleanName, ".tar.gz") && !strings.HasSuffix(cleanName, ".tar") {
+	if cleanName == "." || cleanName == "/" || cleanName == "" {
 		return fmt.Errorf("invalid backup filename")
 	}
 	bDir := GetBackupsDir()
 	target := filepath.Join(bDir, cleanName)
+	if _, err := os.Stat(target); err != nil {
+		if os.IsNotExist(err) {
+			return os.ErrNotExist
+		}
+		return err
+	}
 	return os.Remove(target)
 }
 
 func (c *Client) ListAllBackups() ([]model.ContainerBackupInfo, error) {
-	_ = os.MkdirAll(backupsDir, 0755)
-	_ = os.MkdirAll(backupsDir, 0755)
+	bDir := GetBackupsDir()
+	_ = os.MkdirAll(bDir, 0755)
 
-	entries, err := os.ReadDir(backupsDir)
+	entries, err := os.ReadDir(bDir)
 	if err != nil {
-		return nil, err
+		return []model.ContainerBackupInfo{}, nil
 	}
 
-	var list []model.ContainerBackupInfo
+	list := make([]model.ContainerBackupInfo, 0)
 	for _, ent := range entries {
 		if ent.IsDir() {
 			continue
@@ -665,16 +668,12 @@ func (c *Client) ListAllBackups() ([]model.ContainerBackupInfo, error) {
 			}
 			list = append(list, model.ContainerBackupInfo{
 				Filename:  fname,
-				Path:      filepath.Join(backupsDir, fname),
+				Path:      filepath.Join(bDir, fname),
 				Size:      FormatBytes(info.Size()),
 				SizeBytes: info.Size(),
 				ModTime:   info.ModTime().Format("2006-01-02 15:04:05"),
 			})
 		}
 	}
-
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].ModTime > list[j].ModTime
-	})
 	return list, nil
 }
