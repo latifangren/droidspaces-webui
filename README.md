@@ -130,22 +130,23 @@ The build script will:
 
 ## Future Roadmap & Backlog
 
-### Phase 2: Architecture Evolutions (Nanti Saja / Backlog)
+### Phase 2: Architecture Evolutions (Backlog)
 
-1. **Klien Abstract Unix Domain Socket `@droidspaces` (Phase 2 IPC)**:
-   - **Arsitektur & Kepemilikan**: Socket server (`@droidspaces` / `@droidspaces-socketd-backend`) merupakan implementasi C murni di dalam daemon biner upstream `Droidspaces-OSS` (`src/daemon.c` & `src/socketd_bridge.c`). Backend Go kita bertindak sebagai klien IPC.
-   - **Status Saat Ini**: Biner publik upstream dikompilasi dengan `ENABLE_SOCKETD_BACKEND=0` sehingga socket backend privat dinonaktifkan secara bawaan. Backend Go saat ini memanfaatkan CLI wrapper (`exec.Command`) yang terbukti stabil di berbagai Android environment.
-   - **Rencana Transisi**: Go backend akan mengimplementasikan dual-layer hybrid IPC (`net.Dial("unix", "@droidspaces")`) dengan fallback otomatis ke CLI jika socket daemon belum aktif di sistem.
+1. **Abstract Unix Domain Socket Client `@droidspaces` (Phase 2 IPC)**:
+   - **Architecture & Ownership**: The socket servers (`@droidspaces` / `@droidspaces-socketd-backend`) are native C daemon implementations in upstream `Droidspaces-OSS` (`src/daemon.c` & `src/socketd_bridge.c`). The Go backend acts as the IPC client.
+   - **Current Upstream Status**: Upstream public releases are built with `ENABLE_SOCKETD_BACKEND=0`, keeping the private socket bridge disabled by default. The Go backend currently relies on the stable CLI wrapper (`exec.Command`), which is verified across Android root environments.
+   - **Transition Plan**: Implement a dual-layer hybrid IPC client (`net.Dial("unix", "@droidspaces")`) with automatic fallback to CLI execution when the daemon socket is inactive.
 
-2. **Native Go Tar Cloner & RootFS Permission Preservation (Backlog Riset)**:
-   - **Mengapa Belum Dirombak Total**: Rootfs container Linux di Android memerlukan integritas kernel yang ketat:
-     - **Linux Capabilities & Xattr**: Biner seperti `ping` (`cap_net_raw`) dan `sudo` membutuhkan extended attributes yang rawan hilang jika diekstraksi via `archive/tar` Go standar tanpa pustaka `unix` mendalam.
-     - **Sparse File Images (`.img`)**: Operasi kloning disk image menggunakan `cp --sparse=always` menjaga alokasi blok ext4 tetap hemat (misal file 10 GB yang terisi 500 MB tetap hanya memakan 500 MB fisik). Penyalinan byte biasa di Go akan menuliskan seluruh blok nol ke memori internal Android hingga penuh.
-     - **Hardlinks & Special Device Nodes**: File `/dev/null`, symlinks, dan hardlink inodes dijaga secara sempurna oleh biner `tar` dan `cp -a` sistem.
-   - **Status**: Tetap mempertahankan eksekusi biner `tar` dan `cp -a` sistem untuk keandalan container rootfs sampai paket ekstraksi native Go teruji 100% pada semua arsitektur.
+2. **Native Go Tar Cloner & RootFS Permission Preservation (Research Backlog)**:
+   - **Why Retained in CLI / BusyBox**: Linux container rootfs trees on Android require strict filesystem and kernel integrity:
+     - **Linux Capabilities & Extended Attributes**: Binaries such as `ping` (`cap_net_raw`) and `sudo` require xattrs that standard Go `archive/tar` does not preserve without deep low-level unix syscall extensions.
+     - **Sparse Disk Images (`.img`)**: Ext4 sparse image cloning via `cp --sparse=always` preserves block allocation efficiency (e.g., a 10 GB virtual image using 500 MB only consumes 500 MB on disk). Naive byte-copying in Go writes out zero blocks, rapidly exhausting Android internal storage.
+     - **Hardlinks & Special Device Nodes**: Character devices like `/dev/null`, symlinks, and hardlinks are preserved reliably by system `tar` and `cp -a`.
+   - **Status**: System `tar` and `cp -a` execution is intentionally retained for container safety until a comprehensive native Go implementation is thoroughly validated across all Linux distributions.
 
 3. **Native Wayland Display (Anland Integration)**:
-   - Web canvas streaming untuk aplikasi desktop GUI Linux yang berjalan melalui Wayland display server native Droidspaces.
+   - Web canvas streaming for desktop Linux GUI applications running through Droidspaces' native Wayland display server.
+
 4. **Docker Compose Visual Stacks**:
    - Visual multi-container orchestration directly on Android.
 
