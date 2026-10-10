@@ -113,7 +113,7 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 	}
 
 	// Flush filesystem buffer
-	_ = exec.Command("sync").Run()
+	syncFileSystem()
 
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target container directory: %w", err)

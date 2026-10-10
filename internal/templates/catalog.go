@@ -517,26 +517,21 @@ func StartDownload(templateID string) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("[templates] Go HTTP client failed (%v), trying BusyBox wget fallback...", err)
 			out.Close()
 			_ = os.Remove(tmpArchive)
+			setJobError(fmt.Sprintf("download failed: %v", err))
+			return
+		}
+		defer resp.Body.Close()
 
-			bbCmd := exec.Command("/data/local/Droidspaces/bin/busybox", "wget", "-O", tmpArchive, downloadURL)
-			if errBB := bbCmd.Run(); errBB != nil {
-				setJobError(fmt.Sprintf("HTTP & Busybox download failed: %v (busybox: %v)", err, errBB))
-				return
-			}
-		} else {
-			defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			out.Close()
+			_ = os.Remove(tmpArchive)
+			setJobError(fmt.Sprintf("server returned HTTP %d %s", resp.StatusCode, resp.Status))
+			return
+		}
 
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				out.Close()
-				_ = os.Remove(tmpArchive)
-				setJobError(fmt.Sprintf("server returned HTTP %d %s", resp.StatusCode, resp.Status))
-				return
-			}
-
-			contentLength := resp.ContentLength
+		contentLength := resp.ContentLength
 			pw := &progressWriter{
 				total: contentLength,
 				onProgress: func(downloaded, total int64) {
@@ -561,7 +556,6 @@ func StartDownload(templateID string) error {
 				return
 			}
 			out.Close()
-		}
 
 		log.Printf("[templates] Download complete for %s, extracting to %s", t.ID, targetDir)
 

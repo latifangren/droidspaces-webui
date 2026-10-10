@@ -2,11 +2,15 @@ package runner
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/latifangren/droidspaces-webui/internal/config"
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
 
@@ -96,18 +100,53 @@ func (c *Client) KillProcess(name string, pid int, signal int) error {
 }
 
 // ListUsers discovers accounts defined in /etc/passwd inside the container.
+// It prioritizes direct native host reads of <rootfs>/etc/passwd (0 fork/exec latency, works even when container is stopped).
 func (c *Client) ListUsers(name string) ([]string, error) {
-	cmd := "cut -d: -f1 /etc/passwd 2>/dev/null"
-	out, err := c.Exec(name, cmd, "")
-	if err != nil {
-		return []string{"root"}, nil
+	var content []byte
+
+	// 1. Try reading directly from rootfs on host
+	cfg, err := config.ReadContainerConfig(name)
+	var passwdPath string
+	if err == nil {
+		rootfsPath := cfg["rootfs_path"]
+		if rootfsPath != "" && !strings.HasSuffix(rootfsPath, ".img") {
+			passwdPath = filepath.Join(rootfsPath, "etc", "passwd")
+		}
+	}
+	if passwdPath == "" {
+		dirs := config.GetContainersDirs()
+		for _, d := range dirs {
+			candidate := filepath.Join(d, name, "rootfs", "etc", "passwd")
+			if _, err := os.Stat(candidate); err == nil {
+				passwdPath = candidate
+				break
+			}
+		}
+	}
+
+	if passwdPath != "" {
+		content, _ = os.ReadFile(passwdPath)
+	}
+
+	// 2. Fallback to container namespace exec if rootfs is an image or unreadable
+	if len(content) == 0 {
+		out, errExec := c.Exec(name, "cut -d: -f1 /etc/passwd 2>/dev/null", "")
+		if errExec != nil {
+			return []string{"root"}, nil
+		}
+		content = []byte(out)
 	}
 
 	userMap := make(map[string]bool)
 	var users []string
-	scanner := bufio.NewScanner(strings.NewReader(out))
+	scanner := bufio.NewScanner(bytes.NewReader(content))
 	for scanner.Scan() {
-		u := strings.TrimSpace(scanner.Text())
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		u := strings.TrimSpace(parts[0])
 		if u != "" && !userMap[u] {
 			userMap[u] = true
 			if u != "root" {

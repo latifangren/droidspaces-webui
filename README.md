@@ -128,11 +128,26 @@ The build script will:
 
 ---
 
-## Future Roadmap
+## Future Roadmap & Backlog
 
-- **Dual-Layer Hybrid IPC (Phase 2)**: Transition the Go backend from CLI `exec.Command` wrapping to direct Linux abstract Unix domain socket communication (`@droidspaces-socketd-backend`), achieving zero fork/exec latency.
-- **Native Wayland Display (Anland Integration)**: Web canvas streaming for GUI Linux applications running over Droidspaces' native Wayland display server.
-- **Docker Compose Visual Stacks**: Visual multi-container orchestration directly on Android.
+### Phase 2: Architecture Evolutions (Nanti Saja / Backlog)
+
+1. **Klien Abstract Unix Domain Socket `@droidspaces` (Phase 2 IPC)**:
+   - **Arsitektur & Kepemilikan**: Socket server (`@droidspaces` / `@droidspaces-socketd-backend`) merupakan implementasi C murni di dalam daemon biner upstream `Droidspaces-OSS` (`src/daemon.c` & `src/socketd_bridge.c`). Backend Go kita bertindak sebagai klien IPC.
+   - **Status Saat Ini**: Biner publik upstream dikompilasi dengan `ENABLE_SOCKETD_BACKEND=0` sehingga socket backend privat dinonaktifkan secara bawaan. Backend Go saat ini memanfaatkan CLI wrapper (`exec.Command`) yang terbukti stabil di berbagai Android environment.
+   - **Rencana Transisi**: Go backend akan mengimplementasikan dual-layer hybrid IPC (`net.Dial("unix", "@droidspaces")`) dengan fallback otomatis ke CLI jika socket daemon belum aktif di sistem.
+
+2. **Native Go Tar Cloner & RootFS Permission Preservation (Backlog Riset)**:
+   - **Mengapa Belum Dirombak Total**: Rootfs container Linux di Android memerlukan integritas kernel yang ketat:
+     - **Linux Capabilities & Xattr**: Biner seperti `ping` (`cap_net_raw`) dan `sudo` membutuhkan extended attributes yang rawan hilang jika diekstraksi via `archive/tar` Go standar tanpa pustaka `unix` mendalam.
+     - **Sparse File Images (`.img`)**: Operasi kloning disk image menggunakan `cp --sparse=always` menjaga alokasi blok ext4 tetap hemat (misal file 10 GB yang terisi 500 MB tetap hanya memakan 500 MB fisik). Penyalinan byte biasa di Go akan menuliskan seluruh blok nol ke memori internal Android hingga penuh.
+     - **Hardlinks & Special Device Nodes**: File `/dev/null`, symlinks, dan hardlink inodes dijaga secara sempurna oleh biner `tar` dan `cp -a` sistem.
+   - **Status**: Tetap mempertahankan eksekusi biner `tar` dan `cp -a` sistem untuk keandalan container rootfs sampai paket ekstraksi native Go teruji 100% pada semua arsitektur.
+
+3. **Native Wayland Display (Anland Integration)**:
+   - Web canvas streaming untuk aplikasi desktop GUI Linux yang berjalan melalui Wayland display server native Droidspaces.
+4. **Docker Compose Visual Stacks**:
+   - Visual multi-container orchestration directly on Android.
 
 ---
 
