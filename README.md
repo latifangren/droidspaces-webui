@@ -74,8 +74,8 @@ To ensure the repository is 100% self-contained and reproducible without complex
 
 | Binary | Source Repository & Commit | License | Description |
 |---|---|---|---|
-| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`dev@9ffcaeb`) | GPL-3.0-or-later | Static musl C core container runtime for ARM64 (`aarch64`). |
-| **`busybox`** | Droidspaces Artifacts (`dev@9ffcaeb`) | GPL-2.0 | Multi-call POSIX binary for rootfs decompression and archive handling. |
+| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`dev@c891c81`) | GPL-3.0-or-later | Static musl C core container runtime for ARM64 (`aarch64`) with macvlan & bridgeless NAT support. |
+| **`busybox`** | Droidspaces Artifacts (`dev@c891c81`) | GPL-2.0 | Multi-call POSIX binary for rootfs decompression and archive handling. |
 | **`dsweb_arm64`** | Built from this repository (`cmd/dsweb`) | Open Source | Go daemon with embedded Svelte 5 frontend and persistent PTY session hub. |
 
 ---

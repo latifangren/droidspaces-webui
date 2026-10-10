@@ -40,7 +40,7 @@ droidspaces-webui/
 ├── deploy/
 │   └── magisk/                     # Unified flashable module for Magisk, KernelSU, and APatch
 │       ├── bin/                    # Prebuilt ARM64 core engine binaries (self-contained repo)
-│       │   ├── droidspaces         # Compiled static musl C binary (upstream dev@9ffcaeb)
+│       │   ├── droidspaces         # Compiled static musl C binary (upstream dev@c891c81)
 │       │   └── busybox             # Multi-call utility binary
 │       ├── module.prop             # Module metadata & live prop description
 │       ├── customize.sh            # Live installer script (permission setup & binary copies)

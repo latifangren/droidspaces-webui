@@ -274,18 +274,21 @@ EOF
         $PRINTF "[Unit]\nConditionPathIsReadWrite=\n" > "$ROOTFS_PATH/etc/systemd/system/${unit}.d/99-readonly-fix.conf"
     done
 
-    # 06. Limit specific network services to NAT and gateway modes only
-    # Both need an in-container DHCP client (NAT: lease from Droidspaces; gateway:
-    # lease from the gateway container, e.g. OpenWRT). Host/none modes still skip
-    # them to prevent cellular network breakage.
-    log "Applying NAT/gateway mode guards to network services..."
+    # 06. Keep network services out of host and none modes
+    # Every mode with its own network namespace needs an in-container DHCP
+    # client (NAT: lease from Droidspaces; gateway: from the gateway container;
+    # macvlan: from the LAN). Host mode skips them so they never touch Android's
+    # interfaces, none mode because there is no eth0. Listing the two modes to
+    # skip, rather than the ones to run in, keeps a new mode working on rootfs
+    # installed before it existed.
+    log "Applying network mode guards to network services..."
     for unit in NetworkManager.service dhcpcd.service systemd-resolved.service systemd-networkd.service; do
         if $TEST -f "$ROOTFS_PATH/$GUEST_SYSTEMD_PATH/$unit" || $TEST -e "$ROOTFS_PATH/etc/systemd/system/multi-user.target.wants/$unit"; then
             $MKDIR -p "$ROOTFS_PATH/etc/systemd/system/${unit}.d"
             $CAT > "$ROOTFS_PATH/etc/systemd/system/${unit}.d/99-netmode-limit.conf" << 'EOF'
 [Service]
 ExecCondition=
-ExecCondition=/bin/sh -c "grep -qE 'net_mode=(nat|gateway)' /run/droidspaces/container.config"
+ExecCondition=/bin/sh -c "grep -q '^net_mode=' /run/droidspaces/container.config && ! grep -qE '^net_mode=(host|none)$' /run/droidspaces/container.config"
 EOF
         fi
     done
@@ -306,6 +309,32 @@ UseDNS=yes
 UseDomains=yes
 RouteMetric=100
 EOF
+
+    # 07b. Macvlan mode on a NetworkManager-only rootfs. NetworkManager will not
+    # manage a macvlan whose parent is in another namespace and there is no
+    # systemd-networkd to fall back on, so dhcpcd serves eth0 in that mode only.
+    # Manager mode follows eth0 across a replug; --nodev because udev never
+    # announces a device born in the container's namespace. Skipped when the
+    # distro's own dhcpcd.service runs, which then covers eth0 itself.
+    if $TEST -f "$ROOTFS_PATH/$GUEST_SYSTEMD_PATH/NetworkManager.service" &&
+        ! $TEST -f "$ROOTFS_PATH/$GUEST_SYSTEMD_PATH/systemd-networkd.service" &&
+        ! $TEST -e "$ROOTFS_PATH/etc/systemd/system/multi-user.target.wants/dhcpcd.service" &&
+        { $TEST -x "$ROOTFS_PATH/usr/sbin/dhcpcd" || $TEST -x "$ROOTFS_PATH/sbin/dhcpcd"; }; then
+        log "Adding the macvlan dhcpcd fallback for NetworkManager..."
+        $CAT > "$ROOTFS_PATH/etc/systemd/system/droidspaces-macvlan-dhcp.service" << 'EOF'
+[Unit]
+Description=DHCP for the Droidspaces macvlan eth0
+After=network-pre.target
+
+[Service]
+ExecCondition=/bin/sh -c "grep -qs '^net_mode=macvlan$' /run/droidspaces/container.config"
+ExecStart=/bin/sh -c "exec dhcpcd -M -B --nodev -z eth0"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        $LN -sf /etc/systemd/system/droidspaces-macvlan-dhcp.service "$ROOTFS_PATH/etc/systemd/system/multi-user.target.wants/droidspaces-macvlan-dhcp.service"
+    fi
 
     # 08. Mount binfmt_misc at boot so qemu-user-static handlers register.
     # Only worth installing when a qemu-*-static binary is present.
@@ -414,10 +443,15 @@ EOT
         rc_enable droidspaces-udev-trigger sysinit
     fi
 
-    # NetworkManager only in NAT/gateway mode, the OpenRC twin of the systemd
-    # ExecCondition. dhcpcd leaves the default runlevel, NetworkManager owns DHCP.
+    # NetworkManager only in modes with their own network, the OpenRC twin of the
+    # systemd ExecCondition. dhcpcd leaves the default runlevel, NetworkManager
+    # owns DHCP, except in macvlan mode: NetworkManager will not manage a macvlan
+    # whose parent is in another namespace, so dhcpcd serves eth0 there. Manager
+    # mode, so it follows eth0 when the host recreates it after a replug, and
+    # --nodev, because udev never announces a device born in our namespace and
+    # dhcpcd would wait on it forever.
     if $TEST -f "$ROOTFS_PATH/etc/init.d/NetworkManager"; then
-        log "Gating NetworkManager on NAT/gateway mode..."
+        log "Gating NetworkManager on network mode..."
         $CAT > "$ROOTFS_PATH/etc/init.d/droidspaces-network" << 'EOT'
 #!/sbin/openrc-run
 
@@ -429,25 +463,37 @@ depend() {
 }
 
 is_managed_mode() {
-    grep -qsE '(^|[[:space:]])net_mode=(nat|gateway)($|[[:space:]])' \
-        /run/droidspaces/container.config
+    grep -qs '^net_mode=' /run/droidspaces/container.config &&
+        ! grep -qsE '^net_mode=(host|none)$' /run/droidspaces/container.config
+}
+
+is_macvlan_mode() {
+    grep -qs '^net_mode=macvlan$' /run/droidspaces/container.config
 }
 
 start() {
     if ! is_managed_mode; then
-        einfo "Host networking detected; leaving Android networking untouched"
+        einfo "Host or none networking; leaving networking untouched"
         return 0
     fi
 
-    ebegin "Starting NetworkManager for DroidSpaces NAT/gateway mode"
+    ebegin "Starting NetworkManager for the container network"
     rc-service NetworkManager start
     # NetworkManager's script exits non-zero while "inactive" (started, not yet
     # online). The daemon is running either way, so don't fail this service on it.
     eend 0
+
+    if is_macvlan_mode && command -v dhcpcd >/dev/null; then
+        ebegin "Starting dhcpcd for the macvlan eth0"
+        # Detached from our stdio, or a caller reading our output waits on it
+        dhcpcd -M -b --nodev -z eth0 </dev/null >/dev/null 2>&1
+        eend $?
+    fi
 }
 
 stop() {
     is_managed_mode || return 0
+    is_macvlan_mode && command -v dhcpcd >/dev/null && dhcpcd -x
     rc-service NetworkManager stop
 }
 EOT
@@ -489,20 +535,22 @@ fi
 
 # --- 4. dhcpcd Fixes (any init) ---
 
-# Replace dhcpcd init script to only start in NAT or gateway network mode
+# Replace dhcpcd init script to stay out of host and none network modes
 # This is the OpenRC equivalent of systemd's ExecCondition - if the container
 # is running in host network mode, dhcpcd is cleanly skipped at boot to prevent
-# cellular network breakage and kernel panics on Android interfaces. Gateway
-# mode needs it too: the DHCP lease comes from the gateway container.
+# cellular network breakage and kernel panics on Android interfaces. Every
+# other mode gets its lease through eth0.
 if $TEST -f "$ROOTFS_PATH/etc/init.d/dhcpcd"; then
-    log "Alpine/OpenRC dhcpcd service detected, applying NAT/gateway mode limitation..."
+    log "Alpine/OpenRC dhcpcd service detected, applying network mode guard..."
     $CAT > "$ROOTFS_PATH/etc/init.d/dhcpcd" << 'INITEOF'
 #!/sbin/openrc-run
 
 description="DHCP Client Daemon"
 
 command="/sbin/dhcpcd"
-command_args="-q -B ${command_args:-}"
+# --nodev: udev never announces a device born in the container's namespace,
+# and dhcpcd would wait on it forever where udev runs
+command_args="-q -B --nodev ${command_args:-}"
 command_background="true"
 pidfile="/run/dhcpcd/pid"
 
@@ -515,9 +563,10 @@ depend() {
 }
 
 start_pre() {
-	# Only start in NAT or gateway mode - prevents cellular network breakage in host network mode
-	if ! grep -qE 'net_mode=(nat|gateway)' /run/droidspaces/container.config 2>/dev/null; then
-		einfo "Skipping dhcpcd: not in NAT or gateway network mode"
+	# Not in host mode (cellular breakage) or none mode (no eth0)
+	if ! grep -qs '^net_mode=' /run/droidspaces/container.config ||
+		grep -qsE '^net_mode=(host|none)$' /run/droidspaces/container.config; then
+		einfo "Skipping dhcpcd: host or none network mode"
 		return 1
 	fi
 	checkpath -d /run/dhcpcd
