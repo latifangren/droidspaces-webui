@@ -102,7 +102,7 @@ func (w *wsClientBroadcaster) Close() {
 func generateClientID() string {
 	b := make([]byte, 4)
 	_, _ = rand.Read(b)
-	return fmt.Sprintf("cli_%x", hex.EncodeToString(b))
+	return fmt.Sprintf("cli_%s", hex.EncodeToString(b))
 }
 
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
@@ -148,10 +148,11 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	defer sess.Detach(clientID)
 
 	// WebSocket input loop -> writes keystrokes into PTY or resizes terminal
+	readLoop:
 	for {
 		msgType, msg, err := conn.ReadMessage()
 		if err != nil {
-			break
+			break readLoop
 		}
 
 		if len(msg) == 0 {
@@ -170,7 +171,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 			continue
 		case '0', 0x00:
 			if err := sess.WriteInput(msg[1:]); err != nil {
-				break
+				break readLoop
 			}
 			continue
 		default:
@@ -183,7 +184,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if err := sess.WriteInput(msg); err != nil {
-				break
+				break readLoop
 			}
 		}
 	}

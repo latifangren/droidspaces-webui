@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -350,11 +351,22 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 }
 
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return dstFile.Sync()
 }
 
 func copyDir(src, dst string) error {
@@ -367,13 +379,25 @@ func copyDir(src, dst string) error {
 			return err
 		}
 		targetPath := filepath.Join(dst, rel)
+
+		// Handle symlinks
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return nil // Skip unreadable symlinks
+			}
+			return os.Symlink(linkTarget, targetPath)
+		}
+
 		if info.IsDir() {
-			return os.MkdirAll(targetPath, 0755)
+			return os.MkdirAll(targetPath, info.Mode())
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
+
+		// Skip non-regular files (device nodes, sockets, etc.)
+		if !info.Mode().IsRegular() {
+			return nil
 		}
-		return os.WriteFile(targetPath, data, info.Mode())
+
+		return copyFile(path, targetPath)
 	})
 }

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
+
 	"github.com/latifangren/droidspaces-webui/internal/auth"
 	"github.com/latifangren/droidspaces-webui/internal/hardware"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
@@ -18,7 +20,20 @@ type Server struct {
 	client      *runner.Client
 	termManager *terminal.Manager
 	authMgr     *auth.AuthManager
+	portMu      sync.RWMutex
 	port        int
+}
+
+func (s *Server) GetPort() int {
+	s.portMu.RLock()
+	defer s.portMu.RUnlock()
+	return s.port
+}
+
+func (s *Server) SetPort(port int) {
+	s.portMu.Lock()
+	defer s.portMu.Unlock()
+	s.port = port
 }
 
 func NewServer(port int) *Server {
@@ -148,6 +163,8 @@ func (s *Server) handleStaticEmbed(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+	} else if strings.HasPrefix(path, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 
 	w.Header().Set("Content-Type", mimeType)

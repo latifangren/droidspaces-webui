@@ -30,7 +30,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"containers_count": total,
 		"ram_total_kb":     ramTotal,
 		"binary_path":      s.client.BinaryPath(),
-		"port":             s.port,
+		"port":             s.GetPort(),
 		"daemon_active":    true,
 		"hardware":         hw,
 	}, "")
@@ -227,7 +227,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		s.sendJSON(w, http.StatusOK, model.SettingsConfig{
-			Port:       s.port,
+			Port:       s.GetPort(),
 			BinaryPath: s.client.BinaryPath(),
 		}, "")
 	case http.MethodPost:
@@ -237,8 +237,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if cfg.Port > 0 && cfg.Port < 65535 {
-			s.port = cfg.Port
+		if cfg.Port > 0 && cfg.Port <= 65535 {
+			s.SetPort(cfg.Port)
 			for _, p := range []string{
 				"/data/local/Droidspaces/webui_port",
 				"/data/adb/modules/droidspaces/port",
@@ -249,7 +249,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.sendJSON(w, http.StatusOK, model.SettingsConfig{
-			Port:       s.port,
+			Port:       s.GetPort(),
 			BinaryPath: s.client.BinaryPath(),
 		}, "")
 	default:

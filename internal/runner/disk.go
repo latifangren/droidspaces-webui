@@ -169,19 +169,21 @@ func ParsePortMatrix(running []model.ContainerSummary, stopped []model.Container
 	all := append(append([]model.ContainerSummary{}, running...), stopped...)
 
 	for _, c := range all {
-		cfg, err := config.ReadContainerConfig(c.Name)
-		if err != nil {
+		entries := c.PortMappings
+		if len(entries) == 0 {
+			if cfg, err := config.ReadContainerConfig(c.Name); err == nil {
+				rawPorts := cfg["port_forwards"]
+				if rawPorts == "" {
+					rawPorts = cfg["port"]
+				}
+				if rawPorts != "" {
+					entries = ParsePortMappings(rawPorts)
+				}
+			}
+		}
+		if len(entries) == 0 {
 			continue
 		}
-		rawPorts := cfg["port_forwards"]
-		if rawPorts == "" {
-			rawPorts = cfg["port"]
-		}
-		if rawPorts == "" {
-			continue
-		}
-
-		entries := ParsePortMappings(rawPorts)
 		for _, p := range entries {
 			proto := "TCP"
 			cleanP := p
@@ -191,43 +193,33 @@ func ParsePortMatrix(running []model.ContainerSummary, stopped []model.Container
 				proto = strings.ToUpper(parts[1])
 			}
 
-			var hostPort, containerPort string
-			if strings.Contains(cleanP, ":") {
-				parts := strings.SplitN(cleanP, ":", 2)
-				hostPort = parts[0]
-				containerPort = parts[1]
+			parts := strings.Split(cleanP, ":")
+			var hostP, contP string
+			if len(parts) == 2 {
+				hostP = parts[0]
+				contP = parts[1]
+			} else if len(parts) == 1 {
+				contP = parts[0]
+				hostP = parts[0]
 			} else {
-				hostPort = cleanP
-				containerPort = cleanP
-			}
-
-			status := "inactive"
-			if c.Status == "running" {
-				status = "active"
+				continue
 			}
 
 			matrix = append(matrix, model.PortMatrixEntry{
-				HostPort:      hostPort,
+				HostPort:      hostP,
 				Protocol:      proto,
 				ContainerName: c.Name,
-				ContainerPort: containerPort,
+				ContainerPort: contP,
 				ContainerIP:   c.IP,
-				Status:        status,
+				Status:        c.Status,
 			})
 		}
 	}
 
 	sort.Slice(matrix, func(i, j int) bool {
-		if matrix[i].HostPort == matrix[j].HostPort {
-			return matrix[i].ContainerName < matrix[j].ContainerName
-		}
-		// Try numeric sort on host port if integer
-		pi, errI := strconv.Atoi(matrix[i].HostPort)
-		pj, errJ := strconv.Atoi(matrix[j].HostPort)
-		if errI == nil && errJ == nil {
-			return pi < pj
-		}
-		return matrix[i].HostPort < matrix[j].HostPort
+		pi, _ := strconv.Atoi(matrix[i].HostPort)
+		pj, _ := strconv.Atoi(matrix[j].HostPort)
+		return pi < pj
 	})
 
 	return matrix

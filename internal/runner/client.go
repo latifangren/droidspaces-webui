@@ -194,6 +194,7 @@ func (c *Client) Show() (*model.ShowResult, error) {
 					}
 				}
 				if cfg["run_at_boot"] == "1" || cfg["run_at_boot"] == "true" {
+					stoppedSummary.RunAtBoot = true
 				}
 				if prio, err := strconv.Atoi(cfg["run_at_boot_priority"]); err == nil {
 					stoppedSummary.RunAtBootPriority = prio
