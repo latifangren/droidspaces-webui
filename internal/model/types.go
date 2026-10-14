@@ -33,6 +33,8 @@ type ContainerSummary struct {
 	Net               string   `json:"net,omitempty"`
 	MacvlanParent     string   `json:"macvlan_parent,omitempty"`
 	MacvlanMode       string   `json:"macvlan_mode,omitempty"`
+	Anland            bool     `json:"anland,omitempty"`
+	AnlandSock        string   `json:"anland_sock,omitempty"`
 }
 
 type PortMatrixEntry struct {
@@ -74,8 +76,10 @@ type StartRequest struct {
 	HWAccess          bool     `json:"hw_access,omitempty"`
 	GPU               bool     `json:"gpu,omitempty"`
 	TermuxX11         bool     `json:"termux_x11,omitempty"`
+	X11               bool     `json:"x11,omitempty"`
 	VirGL             bool     `json:"virgl,omitempty"`
 	PulseAudio        bool     `json:"pulse_audio,omitempty"`
+	Anland            bool     `json:"anland,omitempty"`
 	SELinuxPermissive bool     `json:"selinux_permissive,omitempty"`
 	Volatile          bool     `json:"volatile,omitempty"`
 	ForceCgroupV1     bool     `json:"force_cgroupv1,omitempty"`
@@ -205,12 +209,13 @@ type KernelCheckGroup struct {
 }
 
 type KernelCheckResult struct {
-	Summary           string             `json:"summary"`
-	AllRequiredPassed bool               `json:"all_required_passed"`
-	TotalFeatures     int                `json:"total_features"`
-	PassedFeatures    int                `json:"passed_features"`
-	Groups            []KernelCheckGroup `json:"groups"`
-	RawOutput         string             `json:"raw_output"`
+	Summary           string                 `json:"summary"`
+	AllRequiredPassed bool                   `json:"all_required_passed"`
+	TotalFeatures     int                    `json:"total_features"`
+	PassedFeatures    int                    `json:"passed_features"`
+	Capabilities      map[string]interface{} `json:"capabilities,omitempty"`
+	Groups            []KernelCheckGroup     `json:"groups"`
+	RawOutput         string                 `json:"raw_output"`
 }
 
 type APIResponse struct {

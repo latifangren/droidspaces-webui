@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import {
     X,
     Box,
@@ -26,6 +27,7 @@
   export let onClose: () => void;
   export let onSubmit: (payload: any) => void;
 
+  let kernelCapabilities: Record<string, any> = {};
   let isScanning: boolean = false;
   let showManualPaths: boolean = false;
   let selectedDistroId = '';
@@ -51,6 +53,7 @@
   let hwAccess = false;
   let gpu = false;
   let termuxX11 = false;
+  let anland = false;
   let pulseAudio = false;
   let volatileMode = false;
   let allowSandboxing = true;
@@ -143,6 +146,20 @@
     const nextNum = maxNum + 1;
     return `${cleanBase}-${String(nextNum).padStart(2, '0')}`;
   }
+  onMount(() => {
+    loadCapabilities();
+  });
+
+  async function loadCapabilities() {
+    try {
+      const res = await fetch('/api/check');
+      const json = await res.json();
+      if (json.success && json.data?.capabilities) {
+        kernelCapabilities = json.data.capabilities;
+      }
+    } catch (_) {}
+  }
+
 
   function resetModalState() {
     isNameCustomizedByUser = false;
@@ -168,6 +185,7 @@
     hwAccess = false;
     gpu = false;
     termuxX11 = false;
+    anland = false;
     pulseAudio = false;
     volatileMode = false;
     allowSandboxing = true;
@@ -292,10 +310,10 @@
       cpuSliderIndex = 0;
       gpu = true;
       termuxX11 = true;
+      anland = false;
       pulseAudio = true;
     }
   }
-
   function handleSubmit() {
     if (!name.trim()) {
       alert('Container Name is required');
@@ -337,6 +355,7 @@
       hw_access: hwAccess,
       gpu,
       termux_x11: termuxX11,
+      anland,
       pulse_audio: pulseAudio,
       volatile: volatileMode,
       allow_sandboxing: allowSandboxing,
@@ -584,6 +603,9 @@
             <div class="flex items-center justify-between">
               <span class="font-black uppercase text-xs text-ink flex items-center gap-1.5">
                 <HardDrive size={13} class="text-muted" /> Memory Limit:
+                {#if kernelCapabilities && kernelCapabilities.memory_limit === 0}
+                  <span class="text-[9px] text-amber-500 font-mono font-bold">(No memcg)</span>
+                {/if}
               </span>
               <span class="badge-brutal bg-ink text-paper font-mono text-[11px]">
                 {ramOptions[ramSliderIndex].label}
@@ -602,6 +624,9 @@
             <div class="flex items-center justify-between">
               <span class="font-black uppercase text-xs text-ink flex items-center gap-1.5">
                 <Cpu size={13} class="text-muted" /> CPU Allocation:
+                {#if kernelCapabilities && kernelCapabilities.cpu_limit === 0}
+                  <span class="text-[9px] text-amber-500 font-mono font-bold">(No cfs_bandwidth)</span>
+                {/if}
               </span>
               <span class="badge-brutal bg-ink text-paper font-mono text-[11px]">
                 {cpuOptions[cpuSliderIndex].label}
@@ -646,6 +671,9 @@
             <div>
               <span class="text-xs font-black uppercase text-ink flex items-center gap-1.5">
                 <Shield size={13} class="text-blue-500" /> Docker Sandboxing
+                {#if kernelCapabilities && kernelCapabilities.user_ns === 0}
+                  <span class="text-[9px] text-amber-500 font-mono font-bold">(No user_ns)</span>
+                {/if}
               </span>
               <span class="text-[10px] text-muted block">Enable user namespaces for Docker/Podman</span>
             </div>
@@ -668,10 +696,30 @@
           </label>
 
           <label class="flex items-center gap-2.5 p-3 bg-panel rounded-lg border-2 border-line cursor-pointer">
-            <input type="checkbox" bind:checked={termuxX11} class="w-4 h-4 accent-primary cursor-pointer" />
+            <input
+              type="checkbox"
+              bind:checked={termuxX11}
+              on:change={() => { if (termuxX11) anland = false; }}
+              class="w-4 h-4 accent-primary cursor-pointer"
+            />
             <div>
               <span class="text-xs font-black uppercase text-ink">Termux:X11 Display</span>
-              <span class="text-[10px] text-muted block">Export graphical display to Termux:X11</span>
+              <span class="text-[10px] text-muted block">X11 graphical display server (/tmp/.X11-unix)</span>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2.5 p-3 bg-panel rounded-lg border-2 border-line cursor-pointer">
+            <input
+              type="checkbox"
+              bind:checked={anland}
+              on:change={() => { if (anland) termuxX11 = false; }}
+              class="w-4 h-4 accent-primary cursor-pointer"
+            />
+            <div>
+              <span class="text-xs font-black uppercase text-ink flex items-center gap-1.5">
+                <Monitor size={13} class="text-purple-400" /> Anland Wayland (v7.0)
+              </span>
+              <span class="text-[10px] text-muted block">Native Wayland broker daemon (/run/display.sock)</span>
             </div>
           </label>
         </div>
@@ -689,7 +737,7 @@
                 <option value="host">Host (Direct Android Network)</option>
                 <option value="none">None (Air-gapped)</option>
                 <option value="gateway">Gateway (Router mode)</option>
-                <option value="macvlan">Macvlan (Physical LAN)</option>
+                <option value="macvlan">Macvlan {kernelCapabilities && kernelCapabilities.macvlan === 0 ? '(⚠️ No kernel support)' : '(Physical LAN)'}</option>
               </select>
             </div>
 

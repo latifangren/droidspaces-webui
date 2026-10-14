@@ -29,19 +29,23 @@ if [ -f bin/busybox_arm64 ]; then
   cp bin/busybox_arm64 dist/module/bin/busybox
 fi
 
+VERSION=$(grep '^version=' deploy/magisk/module.prop | cut -d= -f2)
+[ -z "$VERSION" ] && VERSION="v7.0.0"
+ZIP_NAME="droidspaces-unified-${VERSION}.zip"
+
 cd dist/module
 if command -v zip >/dev/null 2>&1; then
-  zip -r ../droidspaces-unified-v1.0.0.zip ./* > /dev/null
+  zip -r "../${ZIP_NAME}" ./* > /dev/null
 elif command -v python >/dev/null 2>&1; then
-  python -c "import shutil; shutil.make_archive('../droidspaces-unified-v1.0.0', 'zip', '.')"
+  python -c "import shutil; shutil.make_archive('../${ZIP_NAME%.zip}', 'zip', '.')"
 elif command -v powershell >/dev/null 2>&1; then
-  powershell -Command "Compress-Archive -Path * -DestinationPath ../droidspaces-unified-v1.0.0.zip -Force"
+  powershell -Command "Compress-Archive -Path * -DestinationPath ../${ZIP_NAME} -Force"
 fi
+cp "../${ZIP_NAME}" "../droidspaces-unified-v7.0.0.zip" 2>/dev/null || true
 cd "$DIR"
-
 echo "=================================================="
 echo "✔ Unified Build complete!"
-echo "  - Core + WebUI Module: dist/droidspaces-unified-v1.0.0.zip"
+echo "  - Core + WebUI Module: dist/${ZIP_NAME}"
 echo "  - Host binary:         bin/dsweb"
 echo "  - Android WebUI:       bin/dsweb_arm64"
 echo "=================================================="

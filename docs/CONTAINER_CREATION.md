@@ -42,10 +42,11 @@ Droidspaces enforces memory limits and CPU quotas using Linux Kernel **cgroups**
 - **Memory Limit**:
   - `Unlimited (Host RAM)`: Container can consume all available system RAM.
   - `128 MB` / `256 MB` / `512 MB` / `1 GB` / `2 GB` / `4 GB`: Caps container memory usage. If memory limits are exceeded, kernel OOM kicks in inside the container namespace without crashing the Android host.
+  - *Kernel Capability Gating*: If the host kernel lacks memory cgroups (`CONFIG_MEMCG`), the UI displays `(No memcg)` to notify the user that memory quotas will not be enforced by the kernel.
 - **CPU Allocation**:
   - `All Host Cores (100%)`: Unrestricted CPU time.
   - `1 Core (1000m)` / `2 Cores (2000m)` / `4 Cores (4000m)`: Throttles CPU execution bandwidth via `cpu.cfs_quota_us`.
-
+  - *Kernel Capability Gating*: If the host kernel lacks `CONFIG_CFS_BANDWIDTH`, the UI displays `(No cfs_bandwidth)` to inform the user that CPU bandwidth quotas are skipped by the kernel scheduler.
 ---
 
 ## Step 5: System Integration & Hardware Capabilities
@@ -57,6 +58,7 @@ Droidspaces enforces memory limits and CPU quotas using Linux Kernel **cgroups**
 
 ### 2. Docker Sandboxing (`--allow-sandboxing`)
 - Enables **User Namespaces** (`CLONE_NEWUSER`), allowing rootless Docker, rootless Podman, or nested container daemons to spawn without root privileges escalation risks.
+- *Kernel Capability Gating*: If the host kernel lacks `CONFIG_USER_NS`, the UI displays `(No user_ns)` so you know rootless Docker nesting won't be supported on that specific kernel.
 
 ### 3. Mount /sdcard (`-S`)
 - Automatically bind-mounts Android shared storage (`/sdcard` / `/storage/emulated/0`) into `/sdcard` inside the container. Allows seamless file sharing between Android apps and Linux tools.
@@ -65,9 +67,10 @@ Droidspaces enforces memory limits and CPU quotas using Linux Kernel **cgroups**
 - Direct pass-through of Qualcomm Adreno or ARM Mali GPU character device nodes (`/dev/kgsl-3d0`, `/dev/mali0`, `/dev/dri/*`) into the container.
 - Android 12+ compatibility: Binderfs nodes are bound automatically.
 
-### 5. Termux:X11 Display (`--termux-x11`)
-- Exposes display output to the [Termux:X11](https://github.com/termux/termux-x11) Android app via shared UNIX domain sockets (`/tmp/.X11-unix/X5`). Allows running full Linux desktop environments (XFCE, i3, Openbox).
-
+### 5. Graphical Displays: Termux:X11 vs Anland Wayland (v7.0)
+Droidspaces v7.0 supports two complementary graphical display modes with built-in mutual exclusion:
+- **Termux:X11 Display (`--x11`)**: Exposes display output to the Termux:X11 companion Android APK via `/tmp/.X11-unix/`. Ideal for traditional X11 window managers (XFCE, i3, Openbox).
+- **Anland Wayland Display (`--anland`, v7.0)**: Connects to Droidspaces' native high-performance Wayland display broker socket (`/run/display.sock`). Recommended for modern Wayland-native desktops (KDE Plasma, GNOME, Wayfire) and graphical Linux applications.
 ---
 
 ## Step 6: Network Configuration
@@ -78,7 +81,7 @@ Select how the container connects to Android and the outside world:
 - **Gateway (Router mode)**: Routes all traffic through another container acting as a router (such as OpenWrt). See [Networking Guide](NETWORKING.md) for full architecture.
 - **Host (Direct Android Network)**: Shares the phone's raw network interfaces without isolation.
 - **None (Air-gapped)**: Disables all networking except loopback (`127.0.0.1`).
-- **Macvlan (Physical LAN)**: Plugs container directly into a physical network adapter (USB Ethernet) with its own MAC address and physical LAN IP.
+- **Macvlan (Physical LAN)**: Plugs container directly into a physical network adapter (USB Ethernet) with its own MAC address and physical LAN IP. If the kernel lacks `CONFIG_MACVLAN`, the dropdown displays `(⚠️ No kernel support)` to prevent launch failures.
 
 ---
 

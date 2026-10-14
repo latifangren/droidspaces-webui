@@ -40,7 +40,7 @@ droidspaces-webui/
 ├── deploy/
 │   └── magisk/                     # Unified flashable module for Magisk, KernelSU, and APatch
 │       ├── bin/                    # Prebuilt ARM64 core engine binaries (self-contained repo)
-│       │   ├── droidspaces         # Compiled static musl C binary (upstream dev@c891c81)
+│       │   ├── droidspaces         # Compiled static musl C binary (upstream v7.0.0, commit 64f7411)
 │       │   └── busybox             # Multi-call utility binary
 │       ├── module.prop             # Module metadata & live prop description
 │       ├── customize.sh            # Live installer script (permission setup & binary copies)
@@ -192,7 +192,7 @@ droidspaces-webui/
 
 ## 6. Deployment & Infrastructure
 
-- **Packaging Output**: Single flashable ZIP (`dist/droidspaces-unified-v1.0.0.zip`).
+- **Packaging Output**: Single flashable ZIP (`dist/droidspaces-unified-v7.0.0.zip`).
 - **Target Architecture**: Android ARM64 (`aarch64`), API Level 26+ (Android 8.0 to Android 15+).
 - **Host Testing**: Multi-platform cross-compilation produces standalone binaries (`bin/dsweb_arm64` and `bin/dsweb.exe`).
 - **Startup Sequence**:
@@ -225,26 +225,34 @@ droidspaces-webui/
   ```
 - **Live Device Deployment**:
   ```bash
-  adb push dist/droidspaces-unified-v1.0.0.zip /data/local/tmp/
-  adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces-unified-v1.0.0.zip'"
+  adb push dist/droidspaces-unified-v7.0.0.zip /data/local/tmp/
+  adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces-unified-v7.0.0.zip'"
   adb forward tcp:8484 tcp:84
   ```
 
 ---
 
-## 9. Future Considerations / Roadmap
+## 9. Display Server & Kernel Diagnostics Architecture (v7.0)
 
-1. **Persistent PTY Session Hub (Termix + GoTTY Synthesis)**:
-   - Introduce `internal/terminal/session_manager.go` implementing Termix's persistent session model with 512KB circular ring buffer replay.
-   - PTY framing inspired by GoTTY (`webtty`) in pure Go with zero Cgo dependencies.
-   - Detached background execution: terminal processes survive client disconnects, page reloads, and mobile device lockouts.
-   - Multi-device synchronized terminals (simultaneous PC and phone observation/typing).
-2. **Dockhand & Arcane Container & Terminal Ergonomics**:
-   - Tabbed terminal interface using Dockhand's off-screen DOM caching (`position: absolute; left: -9999px`) to preserve xterm dimensions without geometry corruption.
-   - Mobile helper bar featuring quick-access keys (`Esc`, `Tab`, `Ctrl+C`, `Ctrl+Z`, `~`, `/`, `|`).
-   - Slim Arcane-inspired container tabs for granular inspection (Services, Processes, Specs, Logs).
-3. **Container Compose & Stack Manager**:
-   - Visual multi-container orchestration for running complex stacks directly on rooted Android.
+### 9.1 Machine-Readable Kernel Diagnostics (`check --format`)
+- Upstream Droidspaces v7.0 introduces the `--format` JSON flag for `droidspaces check`.
+- The Go daemon (`internal/runner/client.go:CheckFormat()`) executes the probe and unmarshals 32 boolean/integer flags into a structured domain model.
+- The API layer (`internal/api/system.go:handleCheck`) maps these flags into 4 distinct functional groups:
+  1. **Critical Requirements**: Namespaces (`PID`, `MNT`, `UTS`, `IPC`), pivot_root, procfs, sysfs, PTY, devpts, loop, ext4.
+  2. **Isolation & Sandboxing**: `cgroup2`, `cgroup_ns`, `user_ns`, `seccomp`, `overlayfs`.
+  3. **Advanced Networking**: `net_ns`, `bridge`, `veth`, `macvlan`, `tun`, `ipv6_nat`.
+  4. **Resource Limits**: `memory_limit` (`memcg`), `cpu_limit` (`cfs_bandwidth`), `cpu_accounting`, `pids_limit`.
+- The Svelte frontend (`CreateModal.svelte`) queries `/api/check` and applies dynamic capability gating badges to prevent misconfigurations (e.g. attempting to enable rootless Docker sandboxing on kernels without `CONFIG_USER_NS`).
+
+### 9.2 Graphical Display Server Architecture
+Droidspaces provides two complementary graphical display mechanisms:
+1. **Termux:X11 Display Server (`--x11`)**:
+   - Binds the container's X11 socket to `/tmp/.X11-unix/` on the Android host.
+   - Connects seamlessly with the Termux:X11 companion Android APK.
+2. **Anland Native Wayland Display (`--anland`, v7.0)**:
+   - Spawns native Wayland broker daemon inside the container with Unix domain socket `/run/display.sock`.
+   - Enables direct hardware-accelerated Wayland rendering for modern Linux GUI applications.
+   - Frontend enforces mutual exclusion: enabling Anland Wayland automatically disables Termux:X11 and vice versa.
 
 ---
 
@@ -253,12 +261,21 @@ droidspaces-webui/
 - **Repository**: `droidspaces-webui`
 - **Authors**: `latifangren` & `ravindu644`
 - **Module ID**: `droidspaces`
-- **Version**: `v6.6.0-webui` (Code: `660`)
+- **Version**: `v7.0.0-webui` (Code: `700`)
 - **License**: Open Source (GPL / MIT dual-compatible components)
 
 ---
 
-## 11. Glossary / Acronyms
+## 11. Upstream Binary Provenance
+
+- **Core C Engine**: `Droidspaces v7.0.0`
+- **Source**: [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS)
+- **Release Commit**: `64f7411bbd339369f6bb1e07b3858c25381f2bf2` (HEAD: `37e8b45de5ddc57d35cb8adfd8327add75e25159`)
+- **Build Timestamp**: `Oct 14 2026 12:53:08`
+- **Target Architecture**: Linux AArch64 (`arm64-v8a`), static Musl C libc.
+---
+
+## 12. Glossary / Acronyms
 
 - **AID_INET**: Android-specific kernel group ID (3003) required for opening AF_INET raw network sockets.
 - **KSU**: KernelSU, a kernel-based root solution for Android devices.

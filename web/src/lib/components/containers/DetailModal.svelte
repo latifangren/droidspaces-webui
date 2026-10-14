@@ -275,6 +275,14 @@
               <span class="text-muted block text-[10px]">Private IP</span>
               <span class="font-bold text-ink">{container.ip || container.nat_ip || '-'}</span>
             </div>
+            {#if container.anland || container.anland_sock}
+              <div class="p-2.5 bg-panel-alt rounded border border-line sm:col-span-2">
+                <span class="text-muted block text-[10px]">Anland Wayland Display</span>
+                <span class="font-bold text-purple-400 block text-[11px] truncate">
+                  🟢 Active ({container.anland_sock || '/run/display.sock'})
+                </span>
+              </div>
+            {/if}
             <div class="p-2.5 bg-panel-alt rounded border border-line sm:col-span-3">
               <span class="text-muted block text-[10px]">RootFS Storage Path</span>
               <span class="font-bold text-ink truncate block text-[11px]">{container.rootfs_path || container.rootfs || '-'}</span>
@@ -285,6 +293,7 @@
             <span class="text-muted block text-[10px]">Raw Status JSON</span>
             <pre class="text-[11px] text-ink overflow-x-auto">{JSON.stringify(container, null, 2)}</pre>
           </div>
+        {/if}
 
         {#if activeTab === 'backups'}
           <div class="space-y-4">
@@ -364,7 +373,6 @@
               </div>
             {/if}
           </div>
-        {/if}
         {/if}
 
         {#if activeTab === 'services'}

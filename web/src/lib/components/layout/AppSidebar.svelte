@@ -45,7 +45,7 @@
         <div class="font-black text-sm tracking-tight text-ink uppercase truncate">
           Droidspaces
         </div>
-        <span class="badge-brutal !text-[9px] bg-lime text-black ml-1">v6.6</span>
+        <span class="badge-brutal !text-[9px] bg-lime text-black ml-1">v7.0</span>
       {/if}
     </div>
 

@@ -41,6 +41,7 @@ Clicking the **Inspect** button on any container card opens the detailed modal w
 
 ### Tab 1: Specs
 - Complete configuration dump of `container.config` (rootfs path, network mode, memory quotas, bind mounts, autostart priority, DNS resolvers).
+- **Anland Wayland Display Card**: Displays live status card (`🟢 Active (/run/display.sock)`) whenever Anland is enabled for the container.
 
 ### Tab 2: Init Services (Service Manager)
 - **Automatic Init Detection**: Detects whether the container is running **Systemd**, **OpenRC**, or **Procd**.
@@ -56,6 +57,10 @@ Clicking the **Inspect** button on any container card opens the detailed modal w
 ### Tab 4: Container Users
 - Automatically parses `/etc/passwd` inside the container to list regular user accounts and launch dedicated shells under specific UIDs.
 
+### Tab 5: Backups & Snapshots
+- Proxmox-style rootfs snapshot creation (`.tar.gz`) directly from the container inspector.
+- List, download, delete, and restore existing container archives.
+
 ---
 
 ## 4. Persistent Multi-Terminal Hub (`/terminal`)
@@ -69,7 +74,8 @@ The Terminal Hub provides persistent, background terminal shells surviving disco
 - **Dockhand Off-Screen DOM Preservation**: Inactive terminal tabs are hidden using `absolute -left-[9999px]` rather than `display:none`. This guarantees that `@xterm/xterm` dimensions never collapse to `0x0` rows/cols.
 - **Multi-Device Synchronization**: Connect from your laptop browser and mobile phone simultaneously; keystrokes and terminal output stay 100% in sync in real time.
 - **Mobile Touch Helper Bar**: Dedicated floating on-screen buttons providing `Esc`, `Tab`, `Ctrl+C`, `Ctrl+Z`, `~`, `/`, `|`, and Arrow keys for easy mobile typing.
-
+- **Neo-Brutalist ConfirmModal**: Replaces abrasive browser-native alerts when closing a terminal session. Explicitly confirms session termination and gracefully kills the background PTY process.
+- **Toast Notification Engine**: Non-blocking toast alerts for creation errors, session terminations, and command feedback.
 ---
 
 ## 5. Boot Order Sequencer (`Boot Order Modal`)

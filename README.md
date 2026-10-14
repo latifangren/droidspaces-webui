@@ -43,19 +43,27 @@ Turn any modern Android phone (RAM $\ge$ 6 GB) into an energy-efficient, headles
 - **Interface Classification**: Automatically enumerates and categorizes host network adapters (Wi-Fi `wlan*`, Cellular `rmnet*`, Bridge `br-*`, USB Tethering `rndis*`).
 - **Visual Upstream Selection**: Dropdown selector in the container creation wizard to route NAT or Gateway WAN without manual interface typing.
 
-### 6. One-Click RootFS Store & Android Socket Patching
+### 6. Machine-Readable Kernel Diagnostics & Capability Gating (v7.0)
+- **32-Flag JSON Probe**: Direct integration with upstream `droidspaces check --format` returning 32 structured capability flags across namespaces, cgroups, security, and networking.
+- **Dynamic UI Capability Gating**: The container creation wizard actively inspects kernel probes and alerts the user with contextual badges (e.g., `(No user_ns)`, `(No memcg)`, `(No cfs_bandwidth)`, `(⚠️ No kernel support)` for Macvlan) so misconfigurations are prevented before container launch.
+
+### 7. Native Wayland Display (Anland Integration, v7.0)
+- **Native Wayland Broker**: Run desktop Linux GUI applications with hardware acceleration through Droidspaces' native Anland display broker (`/run/display.sock`, `--anland`).
+- **Mutual Display Exclusion**: UI automatically harmonizes Termux:X11 and Anland Wayland so display servers do not conflict.
+- **Inspector Integration**: Displays live Wayland broker status directly in the Container Detail Modal.
+
+### 8. One-Click RootFS Store & OpenWrt Auto-Patching
 - **Built-in Catalog**: One-click download and extraction for minimal distributions:
   - Alpine Linux (Minimal Edge)
   - Debian 12 (Bookworm)
   - Ubuntu 24.04 (Noble Numbat)
   - Arch Linux ARM
-  - OpenWrt
-- **Automatic AID_INET Patching**: Automatically applies `post_extract_fixes.sh` post-unpacking, adding Android kernel socket group permissions (`3003 inet`, `3004 net_raw`) and DNS fallback resolvers (`1.1.1.1`, `8.8.8.8`).
+  - OpenWrt 24 (24.10.x with automated DHCP & socket patching)
+- **Automatic Android Kernel Patching**: Automatically applies `post_extract_fixes.sh` post-unpacking, adding Android kernel socket group permissions (`3003 inet`, `3004 net_raw`, `aid_net_admin`), configuring OpenWrt DHCP interfaces, disabling broken bridge defaults, and setting DNS fallback resolvers (`1.1.1.1`, `8.8.8.8`).
 
-### 7. Real-Time Hardware Telemetry
+### 9. Real-Time Hardware Telemetry
 - **Battery & Thermal Monitoring**: Polling directly from `/sys/class/power_supply/battery/` (capacity, charge status, temperature) and `/sys/devices/virtual/thermal/`.
 - **Host Resource Usage**: Direct kernel metrics for CPU load averages, RAM allocation, and `/data` storage availability.
-
 ---
 
 ## Documentation & Comprehensive Guides
@@ -79,29 +87,48 @@ For detailed setup tutorials, architecture deep-dives, and option-by-option conf
 
 ## Prebuilt Binaries & Provenance
 
-To ensure the repository is 100% self-contained and reproducible without complex multi-architecture cross-compilation toolchains, the following prebuilt binaries are included under `deploy/magisk/bin/`:
+To ensure the repository is 100% self-contained and reproducible without complex multi-architecture cross-compilation toolchains, prebuilt static binaries are included under `deploy/magisk/bin/`:
 
 | Binary | Source Repository & Commit | License | Description |
 |---|---|---|---|
-| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`dev@c891c81`) | GPL-3.0-or-later | Static musl C core container runtime for ARM64 (`aarch64`) with macvlan & bridgeless NAT support. |
-| **`busybox`** | Droidspaces Artifacts (`dev@c891c81`) | GPL-2.0 | Multi-call POSIX binary for rootfs decompression and archive handling. |
-| **`dsweb_arm64`** | Built from this repository (`cmd/dsweb`) | Open Source | Go daemon with embedded Svelte 5 frontend and persistent PTY session hub. |
+| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`v7.0.0` / [`64f7411`](https://github.com/ravindu644/Droidspaces-OSS/commit/64f7411bbd339369f6bb1e07b3858c25381f2bf2)) | GPL-3.0-or-later | Official Musl C container runtime for ARM64 (`aarch64`). Built Oct 14 2026 from release commit `64f7411` (tree HEAD `37e8b45`). Features machine-readable `--format` probe, Anland Wayland display, and modernized `--x11`. |
+| **`busybox`** | Droidspaces Artifacts (`v7.0.0` Musl) | GPL-2.0 | Multi-call POSIX binary for rootfs decompression, archive handling, and chroot execution. |
+| **`dsweb_arm64`** | Built from this repository (`cmd/dsweb`) | Open Source | Go daemon with embedded Svelte 5 frontend, persistent multi-terminal PTY hub, and REST API. |
 
+### C Musl Binary Details:
+- **Binary Version**: `Droidspaces v7.0.0`
+- **Upstream Release Commit**: `64f7411bbd339369f6bb1e07b3858c25381f2bf2` (HEAD: `37e8b45de5ddc57d35cb8adfd8327add75e25159`)
+- **Author & Maintainer**: [ravindu644](https://github.com/ravindu644) ([Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS))
+- **Toolchain**: Static Musl C compiler targeting Linux AArch64 (`arm64-v8a`)
+- **Build Timestamp**: `Oct 14 2026 12:53:08`
+- **Verification**: `su -c '/data/adb/modules/droidspaces/bin/droidspaces -v'` returns `Droidspaces v7.0.0`.
+
+---
+
+## Changelog & Migration from v6.6
+
+For a line-by-line breakdown of fixes and features introduced in this release, see **[CHANGELOG.md](CHANGELOG.md)**.
+
+Key highlights of the `v6.6` $\rightarrow$ `v7.0` upgrade:
+1. **Core C Engine Upgrade (v7.0.0)**: Upgraded upstream Musl C runtime, adding machine-readable JSON probes (`check --format`) and Anland Wayland display socket support.
+2. **Dynamic Kernel Capability Gating**: Visual warnings in the container wizard when host kernel lacks `user_ns`, `memcg`, `cfs_bandwidth`, or `macvlan`.
+3. **OpenWrt 24 & 25 Fixes**: Automated post-extraction network configuration fixing `eth0` DHCP routing and Android network group permissions (`aid_inet`).
+4. **UX Modernization**: Native browser confirm alerts replaced with Neo-Brutalist `ConfirmModal` for closing terminal sessions, and toast notifications for creation errors.
 ---
 
 ## Installation & Deployment
 
 ### Method 1: Flashing Unified Magisk / KernelSU Module (Recommended)
-1. Build the module or download the pre-packaged zip from `dist/droidspaces-unified-v1.0.0.zip`.
+1. Build the module or download the pre-packaged zip from `dist/droidspaces-unified-v7.0.0.zip`.
 2. Open **KernelSU**, **Magisk**, or **APatch** Manager on your phone.
-3. Select **Modules** -> **Install from storage** -> choose `droidspaces-unified-v1.0.0.zip`.
+3. Select **Modules** -> **Install from storage** -> choose `droidspaces-unified-v7.0.0.zip`.
 4. Reboot the phone. The daemon starts automatically in the background on port `84`.
 
 ### Method 2: Fast Live Deployment via ADB (No Reboot)
 If you are actively developing:
 ```bash
 # Push and install the module live
-adb push dist/droidspaces-unified-v1.0.0.zip /data/local/tmp/droidspaces.zip
+adb push dist/droidspaces-unified-v7.0.0.zip /data/local/tmp/droidspaces.zip
 adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces.zip'"
 
 # Sync live files and restart the daemon
@@ -133,7 +160,7 @@ The build script will:
 1. Build the Svelte 5 frontend with Bun (`web/dist/`).
 2. Cross-compile the Android ARM64 Go binary (`bin/dsweb_arm64`) with embedded frontend assets.
 3. Compile the host development binary (`bin/dsweb` / `bin/dsweb.exe`).
-4. Package the unified flashable ZIP module into `dist/droidspaces-unified-v1.0.0.zip`.
+4. Package the unified flashable ZIP module into `dist/droidspaces-unified-v7.0.0.zip`.
 
 ---
 
@@ -153,10 +180,7 @@ The build script will:
      - **Hardlinks & Special Device Nodes**: Character devices like `/dev/null`, symlinks, and hardlinks are preserved reliably by system `tar` and `cp -a`.
    - **Status**: System `tar` and `cp -a` execution is intentionally retained for container safety until a comprehensive native Go implementation is thoroughly validated across all Linux distributions.
 
-3. **Native Wayland Display (Anland Integration)**:
-   - Web canvas streaming for desktop Linux GUI applications running through Droidspaces' native Wayland display server.
-
-4. **Docker Compose Visual Stacks**:
+3. **Docker Compose Visual Stacks**:
    - Visual multi-container orchestration directly on Android.
 
 ---

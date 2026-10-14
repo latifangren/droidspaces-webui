@@ -340,6 +340,8 @@ func detectDistroFromName(name string) string {
 		return "fedora"
 	case strings.Contains(lower, "void"):
 		return "void"
+	case strings.Contains(lower, "steamos") || strings.Contains(lower, "steam"):
+		return "steamos"
 	case strings.Contains(lower, "immortalwrt") || strings.Contains(lower, "openwrt"):
 		return "openwrt"
 	default:

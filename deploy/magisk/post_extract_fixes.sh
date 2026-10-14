@@ -112,9 +112,17 @@ if $TEST -x "$ROOTFS_PATH/usr/sbin/usermod" || $TEST -x "$ROOTFS_PATH/usr/bin/us
 else
     # BusyBox rootfs (OpenWrt, bare Alpine) have no usermod: put root in the
     # member list directly, the way the OpenWrt Dockerfile writes it.
-    for grp in aid_inet aid_net_raw; do
+    for grp in aid_inet aid_net_raw aid_net_admin; do
         $GREP -qE "^$grp:[^:]*:[^:]*:.*\broot\b" "$ROOTFS_PATH/etc/group" || \
             $SED -i "s/^\($grp:[^:]*:[^:]*:\)\(.*\)$/\1\2,root/; s/:,root$/:root/" "$ROOTFS_PATH/etc/group"
+    done
+    for u in network dnsmasq; do
+        if $GREP -q "^$u:" "$ROOTFS_PATH/etc/passwd"; then
+            for grp in aid_inet aid_net_raw aid_net_admin; do
+                $GREP -qE "^$grp:[^:]*:[^:]*:.*\b$u\b" "$ROOTFS_PATH/etc/group" || \
+                    $SED -i "s/^\($grp:[^:]*:[^:]*:\)\(.*\)$/\1\2,$u/; s/:,$u$/:$u/" "$ROOTFS_PATH/etc/group"
+            done
+        fi
     done
 fi
 
@@ -615,6 +623,35 @@ if $TEST -f "$ROOTFS_PATH/etc/init.d/boot" && $GREP -q -- '-t debugfs debugfs' "
     $SED -i '/-t debugfs debugfs/d' "$ROOTFS_PATH/etc/init.d/boot"
 fi
 
+# OpenWrt defaults to bridging eth0 into br-lan with static IP 192.168.1.1.
+# In a container on Android NAT, eth0 must use DHCP to obtain its IP and default route from Droidspaces.
+if $TEST -f "$ROOTFS_PATH/etc/config/network"; then
+    if $GREP -q "192.168.1.1" "$ROOTFS_PATH/etc/config/network" || $GREP -q "br-lan" "$ROOTFS_PATH/etc/config/network"; then
+        log "Configuring OpenWrt /etc/config/network for DHCP on eth0..."
+        $CAT << 'EOF' > "$ROOTFS_PATH/etc/config/network"
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fd62:4523:4bfe::/48'
+
+config interface 'lan'
+	option device 'eth0'
+	option proto 'dhcp'
+EOF
+    fi
+fi
+
+# Disable missing /sbin/getty respawn in /etc/inittab to avoid procd error storm
+if $TEST -f "$ROOTFS_PATH/etc/inittab" && $GREP -q 'console::respawn:/sbin/getty' "$ROOTFS_PATH/etc/inittab"; then
+    if $TEST ! -x "$ROOTFS_PATH/sbin/getty" && $TEST ! -f "$ROOTFS_PATH/sbin/getty"; then
+        log "Disabling missing /sbin/getty respawn in OpenWrt /etc/inittab..."
+        $SED -i 's|^console::respawn:/sbin/getty|# console::respawn:/sbin/getty|' "$ROOTFS_PATH/etc/inittab"
+    fi
+fi
 # --- 7. Miscellaneous Fixes ---
 
 # Configure logrotate

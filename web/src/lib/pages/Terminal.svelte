@@ -16,16 +16,20 @@
   import TerminalSessionView from '../components/terminal/TerminalSessionView.svelte';
   import NewSessionModal from '../components/terminal/NewSessionModal.svelte';
   import VirtualKeysBar from '../components/terminal/VirtualKeysBar.svelte';
+  import ConfirmModal from '../components/common/ConfirmModal.svelte';
+  import { toast } from '../stores/toast';
 
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let terminalParams: any = null;
-
   let sessions: any[] = [];
   let activeSessionId = '';
   let showNewSessionModal = false;
   let connectionStatus: 'connected' | 'connecting' | 'disconnected' = 'connecting';
   let sendKeyFn: ((key: string) => void) | null = null;
   let terminalViewRefs: Record<string, any> = {};
+  let showConfirmClose = false;
+  let sessionToClose: string | null = null;
+  let sessionTitleToClose = '';
 
   $: runningContainers = containersData?.running || [];
 
@@ -134,19 +138,30 @@
         activeSessionId = json.data.id;
         showNewSessionModal = false;
       } else {
-        alert('Failed: ' + (json.error || 'Creation failed'));
+        toast.error('Failed: ' + (json.error || 'Creation failed'));
       }
     } catch (e: any) {
-      alert('Error: ' + e.message);
+      toast.error('Error: ' + e.message);
     }
   }
 
-  async function closeSession(id: string) {
-    if (!confirm('Close this terminal session? Background process will be terminated.')) return;
+  function requestCloseSession(id: string, title?: string) {
+    sessionToClose = id;
+    sessionTitleToClose = title || id;
+    showConfirmClose = true;
+  }
+
+  async function executeCloseSession() {
+    if (!sessionToClose) return;
+    const id = sessionToClose;
+    showConfirmClose = false;
+    sessionToClose = null;
+
     try {
       await fetch(`/api/terminal/sessions/${id}`, { method: 'DELETE' });
       sessions = sessions.filter((s) => s.id !== id);
       delete terminalViewRefs[id];
+      toast.info(`Session closed: ${sessionTitleToClose}`);
       if (activeSessionId === id && sessions.length > 0) {
         activeSessionId = sessions[0].id;
       } else if (sessions.length === 0) {
@@ -189,8 +204,7 @@
           </span>
           <button
             type="button"
-            on:click|stopPropagation={() => closeSession(s.id)}
-            class="p-0.5 hover:bg-black/20 rounded transition text-ink"
+            on:click|stopPropagation={() => requestCloseSession(s.id, s.title || s.id)}
             title="Close Tab"
           >
             <X size={12} />
@@ -285,5 +299,19 @@
     {runningContainers}
     onClose={() => (showNewSessionModal = false)}
     onOpenSession={handleCreateSession}
+  />
+
+  <!-- Close Session Confirmation Modal -->
+  <ConfirmModal
+    show={showConfirmClose}
+    title="Close Terminal Session"
+    message={`Close terminal session "${sessionTitleToClose}"?\nThe background process will be terminated.`}
+    confirmText="Close Session"
+    destructive={true}
+    onConfirm={executeCloseSession}
+    onCancel={() => {
+      showConfirmClose = false;
+      sessionToClose = null;
+    }}
   />
 </div>

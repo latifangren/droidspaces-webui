@@ -101,8 +101,13 @@ The entire solution runs inside the single static Go daemon (`dsweb_arm64`) with
 4. **Daemon Resource Utilization**: Daemon memory footprint remains under 25 MB RSS with 5 concurrent active terminal sessions on target Android hardware (6 GB+ RAM).
 
 ---
+## 10. Implementation Status (v7.0.0-webui)
 
-## 9. Open Questions
-
-1. **Default Idle Timeout**: Should detached sessions automatically terminate after 60 minutes of inactivity, or remain indefinitely until phone reboot? (Recommended: 60 minutes default, configurable in Settings).
-2. **Shared Terminal Input Control**: When two users type simultaneously on desktop and phone, should inputs interleave directly (collaborative pair programming) or require a read-only lock toggle? (Recommended: Direct collaborative interleave for Phase 1).
+- [x] **Persistent Multi-Terminal Session Hub**: Implemented (`internal/terminal/`) with 512 KB circular ring buffer replay.
+- [x] **Multi-Client Broadcast**: Bidirectional real-time sync between desktop browser and phone.
+- [x] **Dockhand Off-Screen DOM Caching**: Implemented in `Terminal.svelte` (`absolute -left-[9999px]`).
+- [x] **Virtual Mobile Key Bar**: Implemented with quick keys (`Esc`, `Tab`, `Ctrl+C`, `Ctrl+Z`, `~`, `/`, `|`, arrow keys).
+- [x] **Neo-Brutalist ConfirmModal**: Replaced native browser confirm popups when terminating terminal sessions.
+- [x] **Anland Wayland Display Integration**: Native Wayland broker socket support (`/run/display.sock`, `--anland`).
+- [x] **Machine-Readable Diagnostics Probe**: 32-flag JSON kernel diagnostics via `check --format`.
+- [x] **OpenWrt 24 Network Provisioning**: Automated DHCP & Android network group provisioning in `post_extract_fixes.sh`.

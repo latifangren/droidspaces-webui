@@ -64,6 +64,13 @@ func (s *Server) handleHostExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
+	// Try native v7.0.0+ JSON machine-readable probe first
+	if rawJSON, err := s.client.CheckFormat(); err == nil && rawJSON != nil {
+		result := buildKernelCheckResultFromJSON(rawJSON)
+		s.sendJSON(w, http.StatusOK, result, "")
+		return
+	}
+
 	out, err := s.client.Check()
 	if err != nil && out == "" {
 		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
@@ -72,6 +79,134 @@ func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 	result := parseKernelCheckOutput(out)
 	s.sendJSON(w, http.StatusOK, result, "")
+}
+
+func isFlagPassed(val interface{}) bool {
+	switch v := val.(type) {
+	case float64:
+		return v > 0
+	case int:
+		return v > 0
+	case bool:
+		return v
+	case string:
+		return v == "1" || strings.ToLower(v) == "true" || strings.ToLower(v) == "yes"
+	default:
+		return false
+	}
+}
+
+func buildKernelCheckResultFromJSON(raw map[string]interface{}) model.KernelCheckResult {
+	type itemDef struct {
+		key      string
+		name     string
+		desc     string
+		hint     string
+		required bool
+	}
+
+	criticalItems := []itemDef{
+		{"root", "Root Privileges", "Executing with Linux superuser authority (UID 0)", "Requires Magisk / KernelSU / APatch root", true},
+		{"kernel_version", "Kernel Version >= 3.10", "Linux kernel 3.10 or newer with namespace APIs", "Update device kernel / ROM", true},
+		{"pid_ns", "Process Namespace (PID)", "Isolates container process trees (CLONE_NEWPID)", "Kernel CONFIG_PID_NS=y", true},
+		{"mnt_ns", "Mount Namespace (MNT)", "Isolates container filesystem mounts (CLONE_NEWNS)", "Kernel CONFIG_NAMESPACES=y", true},
+		{"uts_ns", "Hostname Namespace (UTS)", "Independent container hostnames (CLONE_NEWUTS)", "Kernel CONFIG_UTS_NS=y", true},
+		{"ipc_ns", "IPC Namespace (IPC)", "Isolates System V IPC and POSIX message queues", "Kernel CONFIG_IPC_NS=y", true},
+		{"pivot_root", "Pivot Root Support", "Safely swaps container rootfs into place", "Kernel pivot_root syscall", true},
+		{"procfs", "Proc Virtual Filesystem", "Mounts isolated /proc directory", "Kernel CONFIG_PROC_FS=y", true},
+		{"sysfs", "Sys Virtual Filesystem", "Mounts container /sys subsystem", "Kernel CONFIG_SYSFS=y", true},
+		{"pty", "Pseudo-Terminal (PTY)", "Allocates interactive terminal pair (/dev/ptmx)", "Kernel CONFIG_UNIX98_PTYS=y", true},
+		{"devpts", "DevPTS Filesystem", "Mounts slave PTY device nodes (/dev/pts)", "Kernel CONFIG_DEVPTS_MULTIPLE_INSTANCES=y", true},
+		{"loop", "Loop Block Device", "Mounts ext4 sparse disk images (.img)", "Kernel CONFIG_BLK_DEV_LOOP=y", true},
+		{"ext4", "Ext4 Filesystem Support", "Native Linux ext4 filesystem driver for containers", "Kernel CONFIG_EXT4_FS=y", true},
+	}
+
+	isolationItems := []itemDef{
+		{"cgroup2", "Cgroup v2 Controller", "Unified control group hierarchy (memory, CPU)", "Kernel CONFIG_CGROUPS=y", false},
+		{"cgroup_ns", "Cgroup Namespace", "Isolates container cgroup view (CLONE_NEWCGROUP)", "Kernel CONFIG_CGROUP_NET_PRIO=y", false},
+		{"user_ns", "User Namespace (Docker)", "Enables rootless Docker and nested containers", "Kernel CONFIG_USER_NS=y", false},
+		{"seccomp", "Seccomp BPF Filter", "Filters dangerous syscalls inside containers", "Kernel CONFIG_SECCOMP=y", false},
+		{"overlayfs", "OverlayFS Driver", "Required for Docker overlay2 storage and volatile mode", "Kernel CONFIG_OVERLAY_FS=y", false},
+	}
+
+	networkItems := []itemDef{
+		{"net_ns", "Network Namespace (NET)", "Isolates network stack, interfaces, and routes", "Kernel CONFIG_NET_NS=y", true},
+		{"bridge", "Bridge Network Support", "Virtual switch for NAT and Gateway routing", "Kernel CONFIG_BRIDGE=y", true},
+		{"veth", "Virtual Ethernet (VETH)", "Virtual Ethernet cables connecting containers to host", "Kernel CONFIG_VETH=y", true},
+		{"macvlan", "Macvlan Physical LAN", "Connects container directly to physical Wi-Fi/Ethernet", "Kernel CONFIG_MACVLAN=y", false},
+		{"tun", "Universal TUN/TAP Device", "Supports VPNs, WireGuard, and OpenWrt tunnels", "Kernel CONFIG_TUN=y", false},
+		{"ipv6_nat", "IPv6 NAT (NAT66)", "Dual-stack IPv6 routing with stateful masquerade", "Kernel CONFIG_IP6_NF_NAT=y", false},
+	}
+
+	cgroupItems := []itemDef{
+		{"memory_limit", "Memory Limit Controller", "Restricts maximum container RAM quota", "Kernel CONFIG_MEMCG=y", false},
+		{"cpu_limit", "CPU Bandwidth Quota", "Restricts container CPU execution percentage", "Kernel CONFIG_CFS_BANDWIDTH=y", false},
+		{"cpu_accounting", "CPU Usage Accounting", "Real-time container CPU load & stat tracking", "Kernel CONFIG_CGROUP_CPUACCT=y", false},
+		{"pids_limit", "Process Number Limit", "Guards against fork bombs (max PID count)", "Kernel CONFIG_CGROUP_PIDS=y", false},
+	}
+
+	makeGroup := func(title, desc string, required bool, defs []itemDef) model.KernelCheckGroup {
+		var items []model.KernelCheckItem
+		passed := 0
+		for _, d := range defs {
+			ok := false
+			if v, exists := raw[d.key]; exists {
+				ok = isFlagPassed(v)
+			}
+			if ok {
+				passed++
+			}
+			items = append(items, model.KernelCheckItem{
+				Name:      d.name,
+				Passed:    ok,
+				HumanDesc: d.desc,
+				Hint:      d.hint,
+			})
+		}
+		return model.KernelCheckGroup{
+			Title:       title,
+			Description: desc,
+			Required:    required,
+			PassedCount: passed,
+			TotalCount:  len(defs),
+			Items:       items,
+		}
+	}
+
+	groups := []model.KernelCheckGroup{
+		makeGroup("Critical Kernel Requirements (Must Have)", "Essential namespaces and filesystem drivers required to run containers.", true, criticalItems),
+		makeGroup("Container Isolation & Sandboxing", "Kernel features for security isolation and Docker container nesting.", false, isolationItems),
+		makeGroup("Advanced Networking & Routing", "Virtual bridges, veth cables, and network namespace routing.", true, networkItems),
+		makeGroup("Resource Limits & Cgroups", "Hardware resource quotas (Memory limits, CPU quotas, PID caps).", false, cgroupItems),
+	}
+
+	total := 0
+	passed := 0
+	allReq := true
+	for _, g := range groups {
+		total += g.TotalCount
+		passed += g.PassedCount
+		if g.Required && g.PassedCount < g.TotalCount {
+			allReq = false
+		}
+	}
+
+	summary := fmt.Sprintf("%d of %d system capabilities verified on your Android kernel.", passed, total)
+	if !allReq {
+		summary = "Warning: Some required kernel capabilities are missing on this device."
+	}
+
+	rawBytes, _ := json.Marshal(raw)
+
+	return model.KernelCheckResult{
+		Summary:           summary,
+		AllRequiredPassed: allReq,
+		TotalFeatures:     total,
+		PassedFeatures:    passed,
+		Capabilities:      raw,
+		Groups:            groups,
+		RawOutput:         string(rawBytes),
+	}
 }
 
 func parseKernelCheckOutput(raw string) model.KernelCheckResult {

@@ -499,7 +499,7 @@
     <div class="space-y-1.5 text-muted">
       <div class="flex justify-between py-1 border-b border-line/60">
         <span>Engine Core:</span>
-        <span class="font-bold text-ink">Droidspaces v6.6.0 (C Musl Static)</span>
+        <span class="font-bold text-ink">Droidspaces v7.0.0 (C Musl Static)</span>
       </div>
       <div class="flex justify-between py-1 border-b border-line/60">
         <span>WebUI Daemon:</span>

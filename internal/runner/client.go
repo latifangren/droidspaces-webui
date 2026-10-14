@@ -153,6 +153,9 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				item.Net = cfg["net"]
 				item.MacvlanParent = cfg["macvlan_parent"]
 				item.MacvlanMode = cfg["macvlan_mode"]
+				if cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true" {
+					item.Anland = true
+				}
 			}
 			if item.RootFS != "" {
 				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
@@ -207,6 +210,7 @@ func (c *Client) Show() (*model.ShowResult, error) {
 				stoppedSummary.Net = cfg["net"]
 				stoppedSummary.MacvlanParent = cfg["macvlan_parent"]
 				stoppedSummary.MacvlanMode = cfg["macvlan_mode"]
+				stoppedSummary.Anland = cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true"
 			}
 			if stoppedSummary.RootFS != "" {
 				stoppedSummary.DiskSize, stoppedSummary.DiskSizeBytes = GetContainerDiskSize(stoppedSummary.RootFS)
@@ -396,14 +400,17 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.GPU {
 		args = append(args, "--gpu")
 	}
-	if req.TermuxX11 {
-		args = append(args, "--termux-x11")
+	if req.TermuxX11 || req.X11 {
+		args = append(args, "--x11")
 	}
 	if req.VirGL {
 		args = append(args, "--virgl")
 	}
 	if req.PulseAudio {
 		args = append(args, "--pulse-audio")
+	}
+	if req.Anland {
+		args = append(args, "--anland")
 	}
 	if req.SELinuxPermissive {
 		args = append(args, "-P")
@@ -456,6 +463,9 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.CustomInit != "" {
 		updates["custom_init"] = req.CustomInit
 	}
+	if req.Anland {
+		updates["enable_anland"] = "1"
+	}
 	_ = config.WriteContainerConfigKeys(req.Name, updates)
 
 	return nil
@@ -501,6 +511,17 @@ func (c *Client) Check() (string, error) {
 	return c.run("check")
 }
 
+func (c *Client) CheckFormat() (map[string]interface{}, error) {
+	out, err := c.run("check", "--format")
+	if err != nil && len(strings.TrimSpace(out)) == 0 {
+		return nil, err
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
 func (c *Client) Scan() (string, error) {
 	return c.run("scan")
 }

@@ -1,6 +1,6 @@
 id=droidspaces
 name=Droidspaces Container Engine & WebUI
-version=v6.6.0-webui
-versionCode=660
+version=v7.0.0-webui
+versionCode=700
 author=ravindu644 & latifangren
 description=Headless Container Engine for Android (C Musl Daemon + Svelte 5 WebUI Dashboard on port 84)

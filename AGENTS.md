@@ -113,7 +113,7 @@ go build -o bin/dsweb.exe ./cmd/dsweb
 ### Live ADB Deployment to Device (No Reboot Required)
 ```bash
 # Push and install the module package live via KernelSU
-adb push dist/droidspaces-unified-v1.0.0.zip /data/local/tmp/droidspaces.zip
+adb push dist/droidspaces-unified-v7.0.0.zip /data/local/tmp/droidspaces.zip
 adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces.zip'"
 
 # Sync live files and restart the daemon

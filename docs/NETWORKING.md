@@ -48,8 +48,9 @@ In NAT mode, Droidspaces creates an isolated Linux network namespace (`CLONE_NEW
 - **Static IP**: Can be fixed using the Static NAT IP field (`--nat-ip=172.28.148.50`).
 - **Port Forwarding**: Expose container ports to the Android host and local Wi-Fi network using `--port=8080:80` (access via `http://<phone-ip>:8080`).
 - **DNS**: Automatically configured using public fallback resolvers (`1.1.1.1`, `8.8.8.8`) unless overridden via `--dns`.
-- **Note on OpenWrt**: **OpenWrt itself MUST be deployed in NAT mode!** This gives OpenWrt an `eth0` interface that acts as its WAN (Internet) uplink.
-
+- **Note on OpenWrt (WAN, OpenWrt 24 `opkg` & OpenWrt 25 `apk` Compatibility)**:
+  - **OpenWrt itself MUST be deployed in NAT mode!** This gives OpenWrt an `eth0` interface that acts as its WAN (Internet) uplink.
+  - **OpenWrt 24 & 25 Networking Fix**: Generic OpenWrt 24 and 25 images default to bridging `eth0` into `br-lan` with a static IP (`192.168.1.1` or `192.168.1.1/24`), which breaks outside connectivity inside container namespaces and causes `opkg update` or `apk update` to fail (`Operation not permitted` / `wget error 4`). Droidspaces automatically patches `/etc/config/network` via `post_extract_fixes.sh` to configure `eth0` as a DHCP client (`proto 'dhcp'`). It also adds the `network` and `dnsmasq` users to Android's `aid_inet:x:3003` group and disables the missing `/sbin/getty` respawn in `/etc/inittab`.
 ---
 
 ## 2. Gateway Mode (`--net=gateway`) — Router & Client Architecture
@@ -174,6 +175,7 @@ Macvlan connects the container directly to a physical network adapter on the And
 - The container gets its own unique physical MAC address.
 - The container queries your physical home/office Wi-Fi router for an IP address via physical DHCP.
 - The container appears on your router's client list just like a physical PC or Raspberry Pi (e.g., `192.168.0.150`).
+- **Kernel Requirement**: Requires `CONFIG_MACVLAN=y` in the Android host kernel. The WebUI container creation wizard dynamically probes the kernel via `/api/check` (`check --format`) and displays `(⚠️ No kernel support)` if your kernel lacks macvlan drivers.
 - **Parameters**:
   - **`--macvlan-parent=<iface>`**: The host network adapter (e.g., `eth0`, `usb0`, `rndis0`).
   - **`--macvlan-mode=<mode>`**: `bridge` (containers communicate with each other and the network), `private`, `vepa`, or `passthru`.
