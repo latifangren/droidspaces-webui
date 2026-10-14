@@ -19,6 +19,7 @@
   export let templates: any[] = [];
   export let hostInterfaces: any[] = [];
   export let runningContainers: any[] = [];
+  export let existingContainers: any[] = [];
   export let isSubmitting: boolean = false;
   export let prefill: any = null;
   export let onRefreshTemplates: (() => Promise<void>) | (() => void) = () => {};
@@ -29,6 +30,8 @@
   let showManualPaths: boolean = false;
   let selectedDistroId = '';
   let name = '';
+  let isNameCustomizedByUser: boolean = false;
+  let wasShown: boolean = false;
   let hostname = '';
   let rootfs = '';
   let rootfsImg = '';
@@ -101,6 +104,97 @@
       gatewaySelect = prefill.gateway;
     }
   }
+
+  $: isNameColliding = Boolean(
+    name.trim() &&
+    (existingContainers || []).some(
+      (c: any) => (c.name || '').toLowerCase() === name.trim().toLowerCase()
+    ) &&
+    (!prefill || (prefill.name || '').toLowerCase() !== name.trim().toLowerCase())
+  );
+
+  function getNextAvailableName(baseName: string): string {
+    const cleanBase = (baseName || 'container').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const pattern = new RegExp(`^${cleanBase}(?:-(\\d+))?$`, 'i');
+    const existing = existingContainers || [];
+
+    let maxNum = 0;
+    let foundAny = false;
+
+    for (const c of existing) {
+      const cName = c.name || '';
+      const match = cName.match(pattern);
+      if (match) {
+        foundAny = true;
+        if (match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        } else {
+          if (maxNum < 1) maxNum = 1;
+        }
+      }
+    }
+
+    if (!foundAny && maxNum === 0) {
+      return `${cleanBase}-01`;
+    }
+    const nextNum = maxNum + 1;
+    return `${cleanBase}-${String(nextNum).padStart(2, '0')}`;
+  }
+
+  function resetModalState() {
+    isNameCustomizedByUser = false;
+    showManualPaths = false;
+    selectedDistroId = '';
+    name = '';
+    hostname = '';
+    rootfs = '';
+    rootfsImg = '';
+    net = 'nat';
+    gateway = '';
+    gatewaySelect = '';
+    gatewayNet = '';
+    gatewayIface = '';
+    gatewayBridge = '';
+    macvlanParent = '';
+    macvlanMode = 'bridge';
+    natIP = '';
+    upstream = '';
+    ports = '';
+    dns = '';
+    androidStorage = true;
+    hwAccess = false;
+    gpu = false;
+    termuxX11 = false;
+    pulseAudio = false;
+    volatileMode = false;
+    allowSandboxing = true;
+    customBinds = '';
+    runAtBoot = false;
+    runAtBootPriority = 1;
+    customInit = '';
+    envVars = '';
+    showAdvanced = false;
+    ramSliderIndex = 3;
+    cpuSliderIndex = 0;
+
+    const installed = templates.filter((t) => t.installed);
+    if (installed.length > 0) {
+      selectDistroCard(installed[0].id);
+    }
+  }
+
+  $: if (show && !wasShown) {
+    wasShown = true;
+    if (!prefill) {
+      resetModalState();
+    }
+  } else if (!show && wasShown) {
+    wasShown = false;
+  }
+
   $: if (net === 'gateway') {
     if (!gateway) {
       const router = (runningContainers || []).find((c: any) =>
@@ -143,17 +237,43 @@
         rootfs = tpl.local_path;
         rootfsImg = '';
       }
-      if (!name) {
-        const base = tpl.distro || distroId.replace(/^(local-|img-)/, '').split('-')[0];
-        name = base + '-01';
+
+      const base = (tpl.distro || distroId.replace(/^(local-|img-)/, '').split('-')[0]).toLowerCase();
+
+      // Only update name if user has not manually edited it
+      if (!isNameCustomizedByUser) {
+        name = getNextAvailableName(base);
+        hostname = base;
       }
-      if ((tpl.distro === 'arch' || distroId.includes('arch')) && tpl.type !== 'img') {
+
+      // Distro-specific presets
+      if (base.includes('openwrt')) {
+        net = 'nat';
+        if (!ports) ports = '8080:80';
+        if (ramSliderIndex > 2) ramSliderIndex = 2;
+        customInit = '';
+      } else if (base.includes('arch') && tpl.type !== 'img') {
         customInit = '/bin/bash';
       } else {
-        customInit = '';
+        if (customInit === '/bin/bash') customInit = '';
+      }
+
+      if (base.includes('ubuntu') || base.includes('debian')) {
+        allowSandboxing = true;
       }
     }
   }
+
+  function handleResetNameToDistro() {
+    isNameCustomizedByUser = false;
+    if (selectedDistroId) {
+      const tpl = templates.find((t) => t.id === selectedDistroId);
+      const base = (tpl?.distro || selectedDistroId.replace(/^(local-|img-)/, '').split('-')[0]).toLowerCase();
+      name = getNextAvailableName(base);
+      hostname = base;
+    }
+  }
+
   function applyProfile(profile: 'server' | 'worker' | 'desktop') {
     if (profile === 'server') {
       ramSliderIndex = 3;
@@ -179,6 +299,10 @@
   function handleSubmit() {
     if (!name.trim()) {
       alert('Container Name is required');
+      return;
+    }
+    if (isNameColliding) {
+      alert(`A container with the name "${name.trim()}" already exists. Please choose a different name.`);
       return;
     }
     if (!rootfs.trim() && !rootfsImg.trim()) {
@@ -370,14 +494,41 @@
         <!-- Step 2: Name & Hostname -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="label-brutal">Container Name *</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="label-brutal !mb-0">Container Name *</label>
+              {#if isNameCustomizedByUser && selectedDistroId}
+                <button
+                  type="button"
+                  on:click={handleResetNameToDistro}
+                  class="text-[10px] text-muted hover:text-primary font-mono flex items-center gap-1 cursor-pointer"
+                  title="Reset to recommended distro name"
+                >
+                  <RotateCcw size={10} />
+                  <span>Reset name</span>
+                </button>
+              {/if}
+            </div>
             <input
               type="text"
               bind:value={name}
+              on:input={() => { isNameCustomizedByUser = true; }}
               placeholder="my-server"
               required
-              class="input-brutal w-full font-mono text-sm"
+              class="input-brutal w-full font-mono text-sm {isNameColliding ? '!border-pink ring-2 ring-pink/50' : ''}"
             />
+            <div class="mt-1 flex items-center justify-between text-[10px] font-mono">
+              {#if isNameColliding}
+                <span class="text-pink font-bold flex items-center gap-1">
+                  ✕ Container "{name.trim()}" already exists
+                </span>
+              {:else if name.trim()}
+                <span class="text-lime font-bold flex items-center gap-1">
+                  ✓ Name available
+                </span>
+              {:else}
+                <span class="text-muted">Alphanumeric, underscores, dashes</span>
+              {/if}
+            </div>
           </div>
           <div>
             <label class="label-brutal">Hostname</label>
@@ -387,6 +538,7 @@
               placeholder="droidspaces"
               class="input-brutal w-full font-mono text-sm"
             />
+            <p class="text-[10px] text-muted font-mono mt-1">Container internal network hostname</p>
           </div>
         </div>
 
