@@ -61,6 +61,7 @@ func TestCatalogDetection(t *testing.T) {
 		"fedora-39":             "fedora",
 		"void-glibc":            "void",
 		"openwrt-rootfs":        "openwrt",
+		"immortalwrt-24-rootfs": "openwrt",
 		"custom-unknown-os":     "linux",
 	}
 	for name, expected := range distros {

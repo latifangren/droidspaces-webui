@@ -247,7 +247,7 @@
       }
 
       // Distro-specific presets
-      if (base.includes('openwrt')) {
+      if (base.includes('openwrt') || base.includes('immortalwrt')) {
         net = 'nat';
         if (!ports) ports = '8080:80';
         if (ramSliderIndex > 2) ramSliderIndex = 2;

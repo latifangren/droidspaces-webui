@@ -112,18 +112,63 @@ var defaultCatalog = []model.TemplateInfo{
 	},
 	{
 		ID:          "openwrt-23.05",
-		Name:        "OpenWrt 23.05 (Network Gateway)",
+		Name:        "OpenWrt 23.05 LTS (Stable)",
 		Distro:      "openwrt",
 		Category:    "network",
 		Environment: "Network Appliance (LuCI Web)",
 		InitSystem:  "procd",
 		MinRAM:      "64 MB",
 		Arch:        "arm64",
-		Version:     "23.05.4",
-		URL:         "https://downloads.openwrt.org/releases/23.05.4/targets/armsr/armv8/openwrt-23.05.4-armsr-armv8-rootfs.tar.gz",
+		Version:     "23.05.5",
+		URL:         "https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8/openwrt-23.05.5-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      25,
-		Description: "[NETWORK ROUTER] Dedicated network routing & firewall appliance with LuCI Web UI on port 80. Lightweight (<30MB RAM) for VPN gateways, WireGuard, and DNS sinkholes.",
+		Description: "[STABLE LTS - KERNEL 4.19+] Battle-tested long-term support release for all Android 10+ devices. Highest stability, lowest RAM footprint (<30 MB), LuCI Web UI on port 80.",
+	},
+	{
+		ID:          "openwrt-24.10",
+		Name:        "OpenWrt 24.10 (Modern Stable)",
+		Distro:      "openwrt",
+		Category:    "network",
+		Environment: "Network Appliance (LuCI Web)",
+		InitSystem:  "procd",
+		MinRAM:      "64 MB",
+		Arch:        "arm64",
+		Version:     "24.10.0",
+		URL:         "https://downloads.openwrt.org/releases/24.10.0/targets/armsr/armv8/openwrt-24.10.0-armsr-armv8-rootfs.tar.gz",
+		Type:        "tar.gz",
+		SizeMB:      25,
+		Description: "[MODERN STABLE - KERNEL 5.10+] Updated stack with musl 1.2.5 and fw4 nftables. High stability on Android 12+ GKI devices. Fast routing and LuCI Web UI.",
+	},
+	{
+		ID:          "openwrt-25.12",
+		Name:        "OpenWrt 25.12 (Next-Gen Preview)",
+		Distro:      "openwrt",
+		Category:    "network",
+		Environment: "Network Appliance (LuCI Web)",
+		InitSystem:  "procd",
+		MinRAM:      "64 MB",
+		Arch:        "arm64",
+		Version:     "25.12.0",
+		URL:         "https://downloads.openwrt.org/releases/25.12.0/targets/armsr/armv8/openwrt-25.12.0-armsr-armv8-rootfs.tar.gz",
+		Type:        "tar.gz",
+		SizeMB:      28,
+		Description: "[EXPERIMENTAL - KERNEL 5.15+] Bleeding-edge Next-Gen release with latest toolchain. Recommended for modern GKI devices and power users seeking newest packages.",
+	},
+	{
+		ID:          "immortalwrt-24.10",
+		Name:        "ImmortalWrt 24.10 (Feature-Packed)",
+		Distro:      "openwrt",
+		Category:    "network",
+		Environment: "Network Appliance (LuCI Web)",
+		InitSystem:  "procd",
+		MinRAM:      "64 MB",
+		Arch:        "arm64",
+		Version:     "24.10.0",
+		URL:         "https://downloads.immortalwrt.org/releases/24.10.0/targets/armsr/armv8/immortalwrt-24.10.0-armsr-armv8-rootfs.tar.gz",
+		Type:        "tar.gz",
+		SizeMB:      45,
+		Description: "[FEATURE RICH - KERNEL 5.4+] Popular OpenWrt fork with extensive pre-bundled package feeds, enhanced network tools, and optimized LuCI UI. Highly stable on kernel 5.4+.",
 	},
 }
 
@@ -295,7 +340,7 @@ func detectDistroFromName(name string) string {
 		return "fedora"
 	case strings.Contains(lower, "void"):
 		return "void"
-	case strings.Contains(lower, "openwrt"):
+	case strings.Contains(lower, "immortalwrt") || strings.Contains(lower, "openwrt"):
 		return "openwrt"
 	default:
 		return "linux"
