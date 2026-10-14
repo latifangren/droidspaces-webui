@@ -58,6 +58,15 @@ Turn any modern Android phone (RAM $\ge$ 6 GB) into an energy-efficient, headles
 
 ---
 
+## Documentation & Comprehensive Guides
+
+For detailed setup tutorials, architecture deep-dives, and option-by-option configuration references, consult the dedicated documentation:
+
+- 🌐 **[Networking Guide & OpenWrt Router Setup](docs/NETWORKING.md)**: Complete guide to all 5 network modes (NAT, Gateway, Host, None, Macvlan) and how to configure OpenWrt as an internal router for client containers.
+- 📦 **[Container Creation & Configuration Guide](docs/CONTAINER_CREATION.md)**: Line-by-line guide covering all 7 steps of the container creation wizard (RootFS types, profiles, cgroup sliders, GPU, Termux:X11, Docker sandboxing, binds).
+- 🛠️ **[Management & Features Guide](docs/MANAGEMENT_AND_FEATURES.md)**: Deep dive into the Persistent Multi-Terminal Hub, Init Service Manager (systemd/openrc/procd), Process tables, Snapshots/Backups, and Boot order sequencing.
+---
+
 ## Performance Optimizations
 
 1. **Direct I/O Disk Image Mounting**: Bundles the latest Droidspaces `dev` engine utilizing `O_DIRECT` for ext4 image mounts, eliminating boot delays and redundant `e2fsck` passes.

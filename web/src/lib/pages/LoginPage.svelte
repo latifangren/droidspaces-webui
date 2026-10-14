@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Shield, KeyRound, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-svelte';
 
   export let onLoginSuccess: () => void;
@@ -7,6 +8,21 @@
   let showPassword = false;
   let errorMsg = '';
   let loading = false;
+  let usingDefaultPassword = false;
+
+  async function checkDefaultPassword() {
+    try {
+      const res = await fetch('/api/auth/status');
+      const data = await res.json();
+      if (data && data.data && data.data.using_default_password) {
+        usingDefaultPassword = true;
+      }
+    } catch (_) {}
+  }
+
+  onMount(() => {
+    checkDefaultPassword();
+  });
 
   async function handleLogin() {
     if (!password) {
@@ -122,6 +138,13 @@
         <ArrowRight size={16} />
       </button>
     </div>
+
+    <!-- Default Password Warning Banner -->
+    {#if usingDefaultPassword}
+      <div class="p-3 bg-amber-400 text-black border-2 border-line rounded-lg text-xs font-bold shadow-brutal-xs flex items-center gap-2">
+        <span>⚠️ Default password aktif ("Droidspaces"). Segera ganti di Settings setelah login.</span>
+      </div>
+    {/if}
 
     <!-- Hint -->
     <div class="pt-4 border-t-2 border-line/60 text-center">

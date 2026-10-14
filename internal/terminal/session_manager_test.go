@@ -79,6 +79,7 @@ func TestSessionLifecycleAndBroadcasting(t *testing.T) {
 		ptmx:        wPipe,
 		cmd:         exec.Command("echo", "ok"),
 		clients:     make(map[string]Broadcaster),
+		clientSizes: make(map[string]winsize),
 		idleTimeout: 50 * time.Millisecond,
 		onClose:     onClose,
 	}
@@ -145,7 +146,7 @@ func TestSessionLifecycleAndBroadcasting(t *testing.T) {
 	}
 
 	// Test Resize (on pipe, pty.Setsize will error gracefully, should not panic)
-	_ = s.Resize(100, 30)
+	_ = s.Resize("c3", 100, 30)
 
 	// Close session
 	if err := s.Close(); err != nil {
@@ -392,4 +393,81 @@ func TestNewSessionAndCreateSessionMocked(t *testing.T) {
 		t.Fatalf("mgr.CreateSession failed: %v", err)
 	}
 	defer sess.Close()
+}
+
+func TestSessionMultiClientSmallestResize(t *testing.T) {
+	rPipe, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	defer rPipe.Close()
+
+	var lastCols, lastRows uint16
+	restore := MockPTY(nil, func(f *os.File, sz *pty.Winsize) error {
+		lastCols = sz.Cols
+		lastRows = sz.Rows
+		return nil
+	})
+	defer restore()
+
+	s := &Session{
+		ID:          "test-sess-winsize",
+		Cols:        80,
+		Rows:        24,
+		Buffer:      NewRingBuffer(1024),
+		ptmx:        wPipe,
+		cmd:         exec.Command("echo", "ok"),
+		clients:     make(map[string]Broadcaster),
+		clientSizes: make(map[string]winsize),
+	}
+	defer s.Close()
+
+	// Attach client 1
+	b1 := &mockBroadcaster{}
+	s.Attach("c1", b1)
+	if err := s.Resize("c1", 120, 40); err != nil {
+		t.Fatalf("Resize c1 failed: %v", err)
+	}
+	if s.Cols != 120 || s.Rows != 40 || lastCols != 120 || lastRows != 40 {
+		t.Errorf("expected 120x40, got %dx%d (pty: %dx%d)", s.Cols, s.Rows, lastCols, lastRows)
+	}
+
+	// Attach client 2 with smaller viewport
+	b2 := &mockBroadcaster{}
+	s.Attach("c2", b2)
+	if err := s.Resize("c2", 80, 50); err != nil {
+		t.Fatalf("Resize c2 failed: %v", err)
+	}
+	// Smallest cols: min(120, 80) = 80; smallest rows: min(40, 50) = 40
+	if s.Cols != 80 || s.Rows != 40 || lastCols != 80 || lastRows != 40 {
+		t.Errorf("expected smallest 80x40, got %dx%d (pty: %dx%d)", s.Cols, s.Rows, lastCols, lastRows)
+	}
+
+	// Attach client 3 with smaller rows
+	b3 := &mockBroadcaster{}
+	s.Attach("c3", b3)
+	if err := s.Resize("c3", 100, 25); err != nil {
+		t.Fatalf("Resize c3 failed: %v", err)
+	}
+	// Smallest cols: min(120, 80, 100) = 80; smallest rows: min(40, 50, 25) = 25
+	if s.Cols != 80 || s.Rows != 25 || lastCols != 80 || lastRows != 25 {
+		t.Errorf("expected smallest 80x25, got %dx%d (pty: %dx%d)", s.Cols, s.Rows, lastCols, lastRows)
+	}
+
+	// Detach c3 -> remaining c1 (120x40) and c2 (80x50) -> smallest 80x40
+	s.Detach("c3")
+	if s.Cols != 80 || s.Rows != 40 || lastCols != 80 || lastRows != 40 {
+		t.Errorf("expected 80x40 after detaching c3, got %dx%d (pty: %dx%d)", s.Cols, s.Rows, lastCols, lastRows)
+	}
+
+	// Detach c2 -> remaining c1 (120x40) -> smallest 120x40
+	s.Detach("c2")
+	if s.Cols != 120 || s.Rows != 40 || lastCols != 120 || lastRows != 40 {
+		t.Errorf("expected 120x40 after detaching c2, got %dx%d (pty: %dx%d)", s.Cols, s.Rows, lastCols, lastRows)
+	}
+
+	// Test invalid size error
+	if err := s.Resize("c1", 0, 20); err == nil {
+		t.Errorf("expected error for 0 cols, got nil")
+	}
 }

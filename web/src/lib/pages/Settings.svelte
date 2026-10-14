@@ -37,6 +37,22 @@
   let changingPassword = false;
   let pwSuccessMsg = '';
   let pwErrorMsg = '';
+  let usingDefaultPassword = false;
+
+  async function checkAuthStatus() {
+    try {
+      const token = localStorage.getItem('ds_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch('/api/auth/status', { headers });
+      const json = await res.json();
+      if (json.success && json.data && json.data.using_default_password) {
+        usingDefaultPassword = true;
+      }
+    } catch (_) {}
+  }
 
   async function handlePasswordChange() {
     pwSuccessMsg = '';
@@ -71,6 +87,7 @@
         currentPassword = '';
         newPassword = '';
         confirmPassword = '';
+        usingDefaultPassword = false;
       } else {
         pwErrorMsg = json.error || 'Failed to change password';
       }
@@ -148,6 +165,7 @@
   }
 
   onMount(() => {
+    checkAuthStatus();
     loadSettings();
   });
 </script>
@@ -209,6 +227,12 @@
       <KeyRound size={18} class="text-primary" />
       <h3 class="text-sm font-black uppercase text-ink">Admin Security & Password</h3>
     </div>
+    {#if usingDefaultPassword}
+      <div class="p-3 bg-amber-400 text-black border-2 border-line rounded-lg text-xs font-bold shadow-brutal-xs flex items-center gap-2">
+        <span>⚠️ Default password aktif ("Droidspaces"). Segera ganti di Settings setelah login.</span>
+      </div>
+    {/if}
+
 
     <div class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">

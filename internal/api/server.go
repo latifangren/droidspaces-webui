@@ -20,6 +20,7 @@ type Server struct {
 	client      *runner.Client
 	termManager *terminal.Manager
 	authMgr     *auth.AuthManager
+	loginLimiter *rateLimiter
 	portMu      sync.RWMutex
 	port        int
 }
@@ -43,6 +44,7 @@ func NewServer(port int) *Server {
 		client:      client,
 		termManager: terminal.NewManager(client),
 		authMgr:     auth.NewAuthManager(),
+		loginLimiter: newLoginRateLimiter(),
 		port:        port,
 	}
 	s.routes()

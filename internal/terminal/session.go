@@ -21,6 +21,12 @@ type Broadcaster interface {
 	WriteMessage(messageType int, data []byte) error
 }
 
+// winsize holds client-reported terminal window dimensions.
+type winsize struct {
+	Cols uint16
+	Rows uint16
+}
+
 // Session represents a persistent Pseudo-Terminal process and its attached clients.
 type Session struct {
 	ID             string
@@ -37,6 +43,7 @@ type Session struct {
 	ptmx        *os.File
 	cmd         *exec.Cmd
 	clients     map[string]Broadcaster
+	clientSizes map[string]winsize
 	mu          sync.RWMutex
 	detachTimer *time.Timer
 	idleTimeout time.Duration
@@ -83,6 +90,7 @@ func NewSession(id, title, target, container, user string, cmd *exec.Cmd, onClos
 		ptmx:        ptmx,
 		cmd:         cmd,
 		clients:     make(map[string]Broadcaster),
+		clientSizes: make(map[string]winsize),
 		idleTimeout: DefaultIdleTimeout,
 		onClose:     onClose,
 	}
@@ -157,6 +165,12 @@ func (s *Session) Detach(clientID string) {
 	defer s.mu.Unlock()
 
 	delete(s.clients, clientID)
+	if s.clientSizes != nil {
+		delete(s.clientSizes, clientID)
+	}
+	if len(s.clients) > 0 {
+		_ = s.applySmallestSizeLocked()
+	}
 	if len(s.clients) == 0 && !s.closed {
 		s.LastDetachedAt = time.Now()
 		// Start idle detach timer to keep process alive in background
@@ -182,8 +196,9 @@ func (s *Session) WriteInput(data []byte) error {
 	return err
 }
 
-// Resize updates the terminal window dimensions.
-func (s *Session) Resize(cols, rows uint16) error {
+// Resize updates the terminal window dimensions for a client and adopts
+// the smallest dimensions across all currently connected clients.
+func (s *Session) Resize(clientID string, cols, rows uint16) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -191,11 +206,64 @@ func (s *Session) Resize(cols, rows uint16) error {
 		return fmt.Errorf("session is closed")
 	}
 
-	s.Cols = cols
-	s.Rows = rows
+	if cols == 0 || rows == 0 {
+		return fmt.Errorf("invalid terminal dimensions: cols and rows must be > 0")
+	}
+
+	if s.clientSizes == nil {
+		s.clientSizes = make(map[string]winsize)
+	}
+
+	s.clientSizes[clientID] = winsize{Cols: cols, Rows: rows}
+	return s.applySmallestSizeLocked()
+}
+
+// applySmallestSizeLocked computes the smallest dimensions across active clients
+// and applies them to the PTY. Caller must hold s.mu.
+func (s *Session) applySmallestSizeLocked() error {
+	if s.closed || s.ptmx == nil {
+		return fmt.Errorf("session is closed")
+	}
+
+	if len(s.clientSizes) == 0 {
+		return nil
+	}
+
+	var minCols, minRows uint16
+	found := false
+
+	for id, sz := range s.clientSizes {
+		if len(s.clients) > 0 && id != "" {
+			if _, ok := s.clients[id]; !ok {
+				continue
+			}
+		}
+		if sz.Cols == 0 || sz.Rows == 0 {
+			continue
+		}
+		if !found {
+			minCols = sz.Cols
+			minRows = sz.Rows
+			found = true
+		} else {
+			if sz.Cols < minCols {
+				minCols = sz.Cols
+			}
+			if sz.Rows < minRows {
+				minRows = sz.Rows
+			}
+		}
+	}
+
+	if !found {
+		return nil
+	}
+
+	s.Cols = minCols
+	s.Rows = minRows
 	return ptySetsize(s.ptmx, &pty.Winsize{
-		Rows: rows,
-		Cols: cols,
+		Rows: minRows,
+		Cols: minCols,
 	})
 }
 

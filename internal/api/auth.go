@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -23,7 +24,8 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 	authenticated := s.authMgr.AuthenticateRequest(r)
 	s.sendJSON(w, http.StatusOK, map[string]interface{}{
-		"authenticated": authenticated,
+		"authenticated":          authenticated,
+		"using_default_password": s.authMgr.IsUsingDefaultPassword(),
 	}, "")
 }
 
@@ -31,6 +33,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
 		return
+	}
+
+	ip := getClientIP(r)
+	if s.loginLimiter != nil {
+		if allowed, retryAfter := s.loginLimiter.Allow(ip); !allowed {
+			secs := int(retryAfter.Seconds())
+			if secs < 1 {
+				secs = 1
+			}
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			s.sendJSON(w, http.StatusTooManyRequests, nil, "too many login attempts, please try again later")
+			return
+		}
 	}
 
 	var req loginRequest

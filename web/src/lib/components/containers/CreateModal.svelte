@@ -18,6 +18,7 @@
   export let show: boolean = false;
   export let templates: any[] = [];
   export let hostInterfaces: any[] = [];
+  export let runningContainers: any[] = [];
   export let isSubmitting: boolean = false;
   export let prefill: any = null;
   export let onRefreshTemplates: (() => Promise<void>) | (() => void) = () => {};
@@ -32,6 +33,11 @@
   let rootfs = '';
   let rootfsImg = '';
   let net = 'nat';
+  let gateway = '';
+  let gatewaySelect = '';
+  let gatewayNet = '';
+  let gatewayIface = '';
+  let gatewayBridge = '';
   let macvlanParent = '';
   let macvlanMode = 'bridge';
   let natIP = '';
@@ -86,6 +92,30 @@
     }
     if (prefill.allow_sandboxing !== undefined) {
       allowSandboxing = prefill.allow_sandboxing;
+    }
+    if (prefill.net) {
+      net = prefill.net;
+    }
+    if (prefill.gateway) {
+      gateway = prefill.gateway;
+      gatewaySelect = prefill.gateway;
+    }
+  }
+  $: if (net === 'gateway') {
+    if (!gateway) {
+      const router = (runningContainers || []).find((c: any) =>
+        c.name.toLowerCase().includes('openwrt') ||
+        c.name.toLowerCase().includes('router') ||
+        c.name.toLowerCase().includes('gateway')
+      );
+      if (router) {
+        gateway = router.name;
+      } else if (runningContainers && runningContainers.length > 0) {
+        gateway = runningContainers[0].name;
+      } else {
+        gateway = 'openwrt-01';
+      }
+      gatewaySelect = gateway;
     }
   }
 
@@ -155,7 +185,14 @@
       alert('RootFS path or RootFS Image path is required');
       return;
     }
-
+    if (net === 'gateway' && (!gateway || !gateway.trim())) {
+      const router = (runningContainers || []).find((c: any) =>
+        c.name.toLowerCase().includes('openwrt') ||
+        c.name.toLowerCase().includes('router') ||
+        c.name.toLowerCase().includes('gateway')
+      );
+      gateway = router ? router.name : ((runningContainers && runningContainers.length > 0) ? runningContainers[0].name : 'openwrt-01');
+    }
     const payload: any = {
       name: name.trim(),
       hostname: hostname.trim() || undefined,
@@ -164,6 +201,12 @@
       net,
       nat_ip: natIP.trim() || undefined,
       upstream: upstream.trim() || undefined,
+      gateway: gateway.trim() || undefined,
+      gateway_net: gatewayNet.trim() || undefined,
+      gateway_iface: gatewayIface.trim() || undefined,
+      gateway_bridge: gatewayBridge.trim() || undefined,
+      macvlan_parent: macvlanParent.trim() || undefined,
+      macvlan_mode: macvlanMode || undefined,
       port: ports ? ports.split(',').map((p) => p.trim()) : undefined,
       dns: dns.trim() || undefined,
       android_storage: androidStorage,
@@ -494,6 +537,7 @@
                 <option value="host">Host (Direct Android Network)</option>
                 <option value="none">None (Air-gapped)</option>
                 <option value="gateway">Gateway (Router mode)</option>
+                <option value="macvlan">Macvlan (Physical LAN)</option>
               </select>
             </div>
 
@@ -571,6 +615,70 @@
                     <option value="passthru">passthru (Dedicated 1-to-1 NIC mapping)</option>
                   </select>
                   <p class="text-[10px] text-muted mt-1">Traffic policy across host and physical network switch.</p>
+                </div>
+              </div>
+            {/if}
+
+            {#if net === 'gateway'}
+              <div class="col-span-full grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-paper-dark border-2 border-line rounded">
+                <div>
+                  <label class="label-brutal">Gateway Container <span class="text-accent">*</span></label>
+                  <div class="space-y-1.5">
+                    {#if runningContainers.length > 0}
+                      <select
+                        bind:value={gatewaySelect}
+                        on:change={() => {
+                          if (gatewaySelect) {
+                            gateway = gatewaySelect;
+                          }
+                        }}
+                        class="input-brutal w-full font-mono text-xs"
+                      >
+                        <option value="">-- Quick Pick from Running Containers ({runningContainers.length}) --</option>
+                        {#each runningContainers as c}
+                          <option value={c.name}>{c.name} ({c.os || 'Running'})</option>
+                        {/each}
+                      </select>
+                    {/if}
+                    <input
+                      type="text"
+                      bind:value={gateway}
+                      placeholder="e.g. openwrt-01"
+                      class="input-brutal w-full font-mono text-xs"
+                      required
+                    />
+                  </div>
+                  <p class="text-[10px] text-muted mt-1">Name of the gateway container to route traffic through (--gateway).</p>
+                </div>
+                <div>
+                  <label class="label-brutal">Gateway LAN Interface</label>
+                  <input
+                    type="text"
+                    bind:value={gatewayIface}
+                    placeholder="eth1 (auto default)"
+                    class="input-brutal w-full font-mono text-xs"
+                  />
+                  <p class="text-[10px] text-muted mt-1">Interface inside gateway container (--gateway-iface, default: eth1).</p>
+                </div>
+                <div>
+                  <label class="label-brutal">Gateway LAN Segment / Subnet</label>
+                  <input
+                    type="text"
+                    bind:value={gatewayNet}
+                    placeholder="lan (auto default)"
+                    class="input-brutal w-full font-mono text-xs"
+                  />
+                  <p class="text-[10px] text-muted mt-1">LAN segment name (--gateway-net, default: lan).</p>
+                </div>
+                <div>
+                  <label class="label-brutal">Gateway Bridge</label>
+                  <input
+                    type="text"
+                    bind:value={gatewayBridge}
+                    placeholder="ds-lan (auto default)"
+                    class="input-brutal w-full font-mono text-xs"
+                  />
+                  <p class="text-[10px] text-muted mt-1">Host bridge name (--gateway-bridge, default: ds-lan).</p>
                 </div>
               </div>
             {/if}

@@ -166,7 +166,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		case '1', 0x01:
 			var rmsg resizeMessage
 			if err := json.Unmarshal(msg[1:], &rmsg); err == nil && rmsg.Cols > 0 && rmsg.Rows > 0 {
-				_ = sess.Resize(rmsg.Cols, rmsg.Rows)
+				_ = sess.Resize(clientID, rmsg.Cols, rmsg.Rows)
 			}
 			continue
 		case '0', 0x00:
@@ -179,7 +179,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 			if msgType == websocket.TextMessage && msg[0] == '{' {
 				var rmsg resizeMessage
 				if err := json.Unmarshal(msg, &rmsg); err == nil && rmsg.Type == "resize" && rmsg.Cols > 0 && rmsg.Rows > 0 {
-					_ = sess.Resize(rmsg.Cols, rmsg.Rows)
+					_ = sess.Resize(clientID, rmsg.Cols, rmsg.Rows)
 					continue
 				}
 			}

@@ -206,7 +206,7 @@
       {/if}
 
       <!-- Persistent Terminal DOM & WebSocket: Preserved across routes to prevent disconnects -->
-      <div class={currentRoute === 'terminal' ? 'block h-full w-full' : 'hidden'}>
+      <div class={currentRoute === 'terminal' ? 'relative block h-full w-full' : 'absolute -left-[9999px] top-0 w-full h-full pointer-events-none invisible'}>
         <Terminal {containersData} {terminalParams} />
       </div>
     </main>

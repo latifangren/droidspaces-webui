@@ -32,6 +32,7 @@ type AuthManager struct {
 	salt         string
 	sessions     map[string]Session
 	pwFilePath   string
+	usingDefaultPassword bool
 }
 
 func NewAuthManager() *AuthManager {
@@ -87,6 +88,9 @@ func (am *AuthManager) setPasswordInMemory(password string) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
 	am.salt = salt
+	if password == DefaultPassword {
+		am.usingDefaultPassword = true
+	}
 	am.passwordHash = hashPassword(password, salt)
 }
 
@@ -99,6 +103,7 @@ func (am *AuthManager) loadOrCreatePassword() error {
 			am.salt = strings.TrimSpace(lines[0])
 			am.passwordHash = strings.TrimSpace(lines[1])
 			am.mu.Unlock()
+			am.usingDefaultPassword = false
 			return nil
 		}
 	}
@@ -116,6 +121,7 @@ func (am *AuthManager) loadOrCreatePassword() error {
 		log.Printf("[auth] could not write password file %s: %v", am.pwFilePath, err)
 	}
 
+	am.usingDefaultPassword = true
 	am.mu.Lock()
 	am.salt = salt
 	am.passwordHash = hash
@@ -129,6 +135,12 @@ func (am *AuthManager) VerifyPassword(password string) bool {
 
 	calculated := hashPassword(password, am.salt)
 	return subtle.ConstantTimeCompare([]byte(calculated), []byte(am.passwordHash)) == 1
+}
+
+func (am *AuthManager) IsUsingDefaultPassword() bool {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	return am.usingDefaultPassword
 }
 
 func (am *AuthManager) ChangePassword(oldPassword, newPassword string) error {
@@ -155,6 +167,7 @@ func (am *AuthManager) ChangePassword(oldPassword, newPassword string) error {
 	am.salt = salt
 	am.passwordHash = hash
 	// Invalidate all existing sessions on password change
+	am.usingDefaultPassword = false
 	am.sessions = make(map[string]Session)
 	am.mu.Unlock()
 

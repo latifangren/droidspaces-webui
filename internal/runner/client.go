@@ -342,6 +342,24 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.MacvlanMode != "" {
 		args = append(args, "--macvlan-mode="+req.MacvlanMode)
 	}
+	if req.Net == "gateway" && strings.TrimSpace(req.Gateway) == "" {
+		show, err := c.Show()
+		if err == nil && show != nil && len(show.Running) > 0 {
+			for _, r := range show.Running {
+				lower := strings.ToLower(r.Name)
+				if strings.Contains(lower, "openwrt") || strings.Contains(lower, "router") || strings.Contains(lower, "gateway") {
+					req.Gateway = r.Name
+					break
+				}
+			}
+			if req.Gateway == "" {
+				req.Gateway = show.Running[0].Name
+			}
+		}
+		if req.Gateway == "" {
+			req.Gateway = "openwrt-01"
+		}
+	}
 	if req.Gateway != "" {
 		args = append(args, "--gateway="+req.Gateway)
 	}
@@ -349,7 +367,7 @@ func (c *Client) Start(req model.StartRequest) error {
 		args = append(args, "--gateway-net="+req.GatewayNet)
 	}
 	if req.GatewayIface != "" {
-		args = append(args, "--gateway-lan-ifname="+req.GatewayIface)
+		args = append(args, "--gateway-iface="+req.GatewayIface)
 	}
 	if req.GatewayBridge != "" {
 		args = append(args, "--gateway-bridge="+req.GatewayBridge)

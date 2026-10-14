@@ -603,6 +603,7 @@
     show={showCreateModal}
     {templates}
     {hostInterfaces}
+    runningContainers={containersData?.running || []}
     isSubmitting={isSubmittingCreate}
     prefill={prefillContainer}
     onRefreshTemplates={loadTemplates}
