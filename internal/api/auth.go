@@ -71,6 +71,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   r.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   7 * 24 * 3600, // 7 days
 	})
@@ -123,22 +124,29 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.authMgr.ChangePassword(req.CurrentPassword, req.NewPassword); err != nil {
-		s.sendJSON(w, http.StatusBadRequest, nil, err.Error())
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "persist") {
+			status = http.StatusInternalServerError
+		}
+		s.sendJSON(w, status, nil, err.Error())
 		return
 	}
 
 	// Create new session for caller after password change
 	newToken, err := s.authMgr.CreateSession()
-	if err == nil {
-		http.SetCookie(w, &http.Cookie{
-			Name:     "ds_token",
-			Value:    newToken,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   7 * 24 * 3600,
-		})
+	if err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, nil, "failed to create session")
+		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ds_token",
+		Value:    newToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   7 * 24 * 3600,
+	})
 
 	s.sendJSON(w, http.StatusOK, map[string]interface{}{
 		"token":   newToken,

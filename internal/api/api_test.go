@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"os/exec"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -32,6 +32,9 @@ func setupTestServer(t *testing.T) (*Server, string, string) {
 	_ = os.MkdirAll(filepath.Join(tmpDir, "Backups"), 0755)
 
 	s := NewServer(8080)
+	if err := s.authMgr.ChangePassword("Droidspaces", "TestPassword123"); err != nil {
+		t.Fatalf("prepare test password: %v", err)
+	}
 	token, _ := s.authMgr.CreateSession()
 	return s, tmpDir, token
 }
@@ -56,8 +59,15 @@ func doRequest(handler http.Handler, token, method, path string, body interface{
 }
 
 func TestAuthEndpoints(t *testing.T) {
-	s, _, token := setupTestServer(t)
+	tmpDir := t.TempDir()
+	t.Setenv("DROIDSPACES_AUTH_FILE", filepath.Join(tmpDir, "auth"))
+	s := NewServer(8080)
+	token, _ := s.authMgr.CreateSession()
 	h := s.Handler()
+	if s.authMgr.IsUsingDefaultPassword() {
+		// Login's successful verification migrates the default legacy record if needed.
+		s.authMgr.VerifyPassword("Droidspaces")
+	}
 
 	// 1. Auth status
 	w := doRequest(h, "", "GET", "/api/auth/status", nil)
@@ -71,13 +81,12 @@ func TestAuthEndpoints(t *testing.T) {
 		t.Errorf("expected 401 for wrong password, got %d", w.Code)
 	}
 
-	// 3. Auth login with default password
-	w = doRequest(h, "", "POST", "/api/auth/login", map[string]string{"password": "Droidspaces"})
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 for default password, got %d", w.Code)
+	// Default-password sessions can change the password, but not use other APIs.
+	w = doRequest(h, token, "GET", "/api/status", nil)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 before default password change, got %d", w.Code)
 	}
 
-	// 4. Change password with valid token (invalidates all old tokens)
 	w = doRequest(h, token, "POST", "/api/auth/change-password", map[string]string{
 		"current_password": "Droidspaces",
 		"new_password":     "NewSecretPassword123",
@@ -346,7 +355,6 @@ func TestContainerConfigAndActionEndpoints(t *testing.T) {
 	}
 }
 
-
 func TestEdgeCasesAndMethodValidation(t *testing.T) {
 	s, _, token := setupTestServer(t)
 	h := s.Handler()
@@ -387,9 +395,15 @@ func TestEdgeCasesAndMethodValidation(t *testing.T) {
 }
 func TestKernelCheckParsingAndPtyClient(t *testing.T) {
 	// Test generateClientID
-	id1 := generateClientID()
-	id2 := generateClientID()
-	if !strings.HasPrefix(id1, "cli_") || !strings.HasPrefix(id2, "cli_") || id1 == id2 {
+	id1, err := generateClientID()
+	if err != nil {
+		t.Fatalf("generateClientID failed: %v", err)
+	}
+	id2, err := generateClientID()
+	if err != nil {
+		t.Fatalf("generateClientID failed: %v", err)
+	}
+	if !strings.HasPrefix(id1, "cli_") || !strings.HasPrefix(id2, "cli_") || id1 == id2 || len(id1) != 36 || len(id2) != 36 {
 		t.Errorf("unexpected client IDs: %s vs %s", id1, id2)
 	}
 
@@ -531,7 +545,7 @@ func TestServicesAndBackupsRoutes(t *testing.T) {
 func TestWebSocketAndPTYBroadcaster(t *testing.T) {
 	// 1. Test wsClientBroadcaster methods
 	bc := &wsClientBroadcaster{
-		sendChan: make(chan []byte, 10),
+		sendChan: make(chan queuedWSMessage, 10),
 		done:     make(chan struct{}),
 	}
 	_ = bc.WriteMessage(websocket.BinaryMessage, []byte("data"))

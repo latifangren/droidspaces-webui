@@ -16,13 +16,13 @@ import (
 )
 
 type Server struct {
-	mux         *http.ServeMux
-	client      *runner.Client
-	termManager *terminal.Manager
-	authMgr     *auth.AuthManager
+	mux          *http.ServeMux
+	client       *runner.Client
+	termManager  *terminal.Manager
+	authMgr      *auth.AuthManager
 	loginLimiter *rateLimiter
-	portMu      sync.RWMutex
-	port        int
+	portMu       sync.RWMutex
+	port         int
 }
 
 func (s *Server) GetPort() int {
@@ -40,12 +40,12 @@ func (s *Server) SetPort(port int) {
 func NewServer(port int) *Server {
 	client := runner.NewClient()
 	s := &Server{
-		mux:         http.NewServeMux(),
-		client:      client,
-		termManager: terminal.NewManager(client),
-		authMgr:     auth.NewAuthManager(),
+		mux:          http.NewServeMux(),
+		client:       client,
+		termManager:  terminal.NewManager(client),
+		authMgr:      auth.NewAuthManager(),
 		loginLimiter: newLoginRateLimiter(),
-		port:        port,
+		port:         port,
 	}
 	s.routes()
 	StartLogAutoTruncate()
@@ -71,8 +71,17 @@ func (s *Server) Handler() http.Handler {
 		// Enforce authentication on all /api/* routes except public auth status and login
 		if strings.HasPrefix(path, "/api/") {
 			if path != "/api/auth/status" && path != "/api/auth/login" {
-				if !s.authMgr.AuthenticateRequest(r) {
+				authenticated := s.authMgr.AuthenticateRequest(r)
+				if !authenticated {
 					s.sendJSON(w, http.StatusUnauthorized, nil, "unauthorized")
+					return
+				}
+				if path == "/api/auth/change-password" || path == "/api/auth/logout" {
+					s.mux.ServeHTTP(w, r)
+					return
+				}
+				if s.authMgr.IsUsingDefaultPassword() {
+					s.sendJSON(w, http.StatusForbidden, nil, "change the default password before using the API")
 					return
 				}
 			}
