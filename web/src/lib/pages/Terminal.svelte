@@ -45,18 +45,22 @@
     try {
       const res = await fetch('/api/terminal/sessions');
       const json = await res.json();
-      if (json.success) {
-        const list = Array.isArray(json.data) ? json.data : [];
-        sessions = list;
-        if (sessions.length > 0) {
-          if (!activeSessionId || !sessions.some((s) => s.id === activeSessionId)) {
-            activeSessionId = sessions[0].id;
-          }
-        } else {
-          activeSessionId = '';
-        }
+      if (!res.ok || !json.success) {
+        toast.error(json.error || 'Failed to load terminal sessions');
+        return;
       }
-    } catch (_) {}
+      const list = Array.isArray(json.data) ? json.data : [];
+      sessions = list;
+      if (sessions.length > 0) {
+        if (!activeSessionId || !sessions.some((s) => s.id === activeSessionId)) {
+          activeSessionId = sessions[0].id;
+        }
+      } else {
+        activeSessionId = '';
+      }
+    } catch (e: any) {
+      toast.error('Unable to load terminal sessions: ' + (e.message || 'network error'));
+    }
   }
 
   function handleSessionDead(deadId: string) {
@@ -91,11 +95,15 @@
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (json.success && json.data) {
-        sessions = [json.data];
-        activeSessionId = json.data.id;
+      if (!res.ok || !json.success || !json.data) {
+        toast.error(json.error || 'Failed to create a terminal session');
+        return;
       }
-    } catch (_) {}
+      sessions = [json.data];
+      activeSessionId = json.data.id;
+    } catch (e: any) {
+      toast.error('Unable to create a terminal session: ' + (e.message || 'network error'));
+    }
   }
 
   async function handleOpenSpecificContainer(cname: string, user?: string) {
@@ -121,8 +129,12 @@
       if (json.success && json.data) {
         sessions = [...sessions, json.data];
         activeSessionId = json.data.id;
+      } else {
+        toast.error(json.error || 'Failed to open terminal session');
       }
-    } catch (_) {}
+    } catch (e: any) {
+      toast.error('Unable to open terminal session: ' + (e.message || 'network error'));
+    }
   }
 
   async function handleCreateSession(payload: { target: string; container?: string; user?: string; title?: string }) {
@@ -158,7 +170,12 @@
     sessionToClose = null;
 
     try {
-      await fetch(`/api/terminal/sessions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/terminal/sessions/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        toast.error(json.error || 'Failed to close terminal session');
+        return;
+      }
       sessions = sessions.filter((s) => s.id !== id);
       delete terminalViewRefs[id];
       toast.info(`Session closed: ${sessionTitleToClose}`);
@@ -168,7 +185,9 @@
         activeSessionId = '';
         createDefaultSession();
       }
-    } catch (_) {}
+    } catch (e: any) {
+      toast.error('Unable to close terminal session: ' + (e.message || 'network error'));
+    }
   }
 
   function handleSendVirtualKey(key: string) {

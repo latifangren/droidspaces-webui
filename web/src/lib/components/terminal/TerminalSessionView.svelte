@@ -128,7 +128,7 @@
       let isNotFound = false;
       if (typeof event.data === 'string') {
         term?.write(event.data);
-        if (event.data.includes('Session not found')) {
+        if (event.data.includes('Session not found') || event.data.includes('Session closed') || event.data.includes('Process exited')) {
           isNotFound = true;
         }
       } else if (event.data instanceof ArrayBuffer) {
