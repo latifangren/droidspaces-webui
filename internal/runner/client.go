@@ -561,8 +561,12 @@ func (c *Client) ExecContextBounded(ctx context.Context, container, command, use
 }
 
 func (c *Client) execContext(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
+	// The droidspaces CLI runs commands as root by default. Passing -u/--user to
+	// the upstream CLI currently makes it bail out with "Failed to execute
+	// command: No such file or directory" before reaching the container, so we
+	// only forward the user flag when the caller asked for a non-root identity.
 	args := []string{"--name=" + container, "run"}
-	if user != "" {
+	if user != "" && user != "root" {
 		args = append(args, "-u", user)
 	}
 	args = append(args, "sh", "-c", command)

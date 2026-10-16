@@ -12,5 +12,7 @@ web/dist/*
 
 # Local artifacts
 /dsweb.exe
+/dsweb_arm64
+/dsweb_arm64---
 /node_modules/
 

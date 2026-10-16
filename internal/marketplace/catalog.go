@@ -201,6 +201,11 @@ func nginxStaticPreset() AppPreset {
 		},
 		SetupSteps: []SetupStep{
 			{
+				Name:    "bring-up-eth0",
+				Command: "ip link set eth0 up && udhcpc -i eth0 -t 5 -q || (echo 'dhcp failed, falling back to static 172.28.0.0/16'; ip addr add 172.28.196.166/16 dev eth0 2>/dev/null; ip route add default via 172.28.0.1 dev eth0 2>/dev/null; true)",
+				Hint:    "Brings eth0 up and obtains a DHCP lease so apk can reach the package mirror.",
+			},
+			{
 				Name:    "install-nginx",
 				Command: "apk add --no-cache nginx",
 				Hint:    "Installs nginx from the Alpine package repository.",
@@ -211,7 +216,7 @@ func nginxStaticPreset() AppPreset {
 				Hint:    "Writes a placeholder index page.",
 			},
 		},
-		PostSetupNote: "Setup installs nginx and writes a placeholder page; it does not start the server. Start nginx inside the container, then open host port 8080.",
+		PostSetupNote: "Setup installs nginx and writes a placeholder page; it does not start the server. Run 'rc-service nginx start' inside the container, then open host port 8080.",
 	}
 }
 
@@ -275,7 +280,8 @@ func homeAssistantPreset() AppPreset {
 		Prerequisites: []string{
 			"Debian 12 rootfs must be installed from the RootFS Store.",
 			"Container requires at least 1 GB RAM and ~2 GB of free disk for dependencies.",
-			"Installing Python dependencies can take several minutes. Home Assistant is not started automatically.",
+			"Home Assistant 2023.12.4 is pinned because it is the last release that runs on Python 3.11 (Debian 12).",
+			"Installing Python dependencies can take several minutes and compiles a few C extensions from source; Home Assistant is not started automatically.",
 		},
 		SetupSteps: []SetupStep{
 			{
@@ -285,8 +291,8 @@ func homeAssistantPreset() AppPreset {
 			},
 			{
 				Name:    "install-system-deps",
-				Command: "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo python3 python3-venv python3-pip libffi-dev libssl-dev build-essential",
-				Hint:    "Installs sudo and the Python toolchain required to bootstrap Home Assistant.",
+				Command: "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo python3 python3-venv python3-dev python3-pip libffi-dev libssl-dev build-essential pkg-config",
+				Hint:    "Installs sudo, the Python toolchain, and the C build headers (python3-dev, libffi-dev, libssl-dev, pkg-config) needed to compile Home Assistant's native dependencies such as ciso8601.",
 			},
 			{
 				Name:    "create-ha-user",
@@ -300,8 +306,8 @@ func homeAssistantPreset() AppPreset {
 			},
 			{
 				Name:    "install-homeassistant",
-				Command: "sudo -u hass /opt/homeassistant/venv/bin/pip install --no-cache-dir homeassistant==2024.9.3",
-				Hint:    "Installs a pinned Home Assistant Core release to keep builds reproducible.",
+				Command: "sudo -u hass /opt/homeassistant/venv/bin/pip install --no-cache-dir 'homeassistant==2023.12.4'",
+				Hint:    "Installs Home Assistant 2023.12.4, the last release that runs on Python 3.11. Allows building C extensions from source (ciso8601, home-assistant-bluetooth) since some pinned wheels are not published for the running interpreter.",
 			},
 		},
 		PostSetupNote: "Setup installs Home Assistant Core but does not start it. Run `sudo -u hass /opt/homeassistant/venv/bin/hass` inside the container; after it starts successfully, open host port 8123.",
