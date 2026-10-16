@@ -202,7 +202,7 @@ func (c *Client) Clone(sourceName, targetName string, autoStart bool) error {
 		cfgContent.WriteString(fmt.Sprintf("%s=%s\n", k, v))
 	}
 	cfgFile := filepath.Join(targetDir, "container.config")
-	if err := os.WriteFile(cfgFile, []byte(cfgContent.String()), 0644); err != nil {
+	if err := config.WriteConfigFile(cfgFile, []byte(cfgContent.String()), 0644); err != nil {
 		_ = os.RemoveAll(targetDir)
 		return fmt.Errorf("failed to write cloned container config: %w", err)
 	}
@@ -337,7 +337,7 @@ func (c *Client) Restore(req model.RestoreRequest) error {
 	}
 
 	cfgFile := filepath.Join(targetDir, "container.config")
-	if err := os.WriteFile(cfgFile, []byte(cfgContent.String()), 0644); err != nil {
+	if err := config.WriteConfigFile(cfgFile, []byte(cfgContent.String()), 0644); err != nil {
 		_ = os.RemoveAll(targetDir)
 		return fmt.Errorf("failed to write container config: %w", err)
 	}
