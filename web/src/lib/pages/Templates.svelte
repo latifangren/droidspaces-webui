@@ -3,6 +3,7 @@
   import {
     DownloadCloud,
     CheckCircle,
+    Package,
     Play,
     Loader2,
     Layers,
@@ -19,9 +20,12 @@
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
+  export let containersData: any = { running: [], stopped: [] };
 
-  let activeTab = 'all'; // 'all' | 'server' | 'network' | 'blueprints'
+  let activeTab = 'all'; // 'all' | 'server' | 'network' | 'blueprints' | 'apps'
+  let appFilter = 'all';
   let templates: any[] = [];
+  let appPresets: any[] = [];
   let activeJob = '';
   let progress = '';
   let lastError = '';
@@ -103,6 +107,7 @@
     if (activeTab === 'network') return templates.filter((t) => t.category === 'network');
     return [];
   })();
+  $: filteredApps = appFilter === 'all' ? appPresets : appPresets.filter((app) => app.category === appFilter);
 
   async function loadTemplates() {
     try {
@@ -110,6 +115,7 @@
       const json = await res.json();
       if (json.success && json.data) {
         templates = json.data.templates || [];
+        appPresets = json.data.apps || [];
         activeJob = json.data.active_job || '';
         progress = json.data.progress || '';
         if (json.data.last_error) {
@@ -164,6 +170,39 @@
     } catch (e: any) {
       alert(e.message);
     }
+  }
+
+  function launchAppPreset(app: any) {
+    const rootfsTemplate = templates.find((item) => item.id === app.required_rootfs_id && item.installed);
+    if (!rootfsTemplate) {
+      toast.error(`Install ${app.required_rootfs_id} from the RootFS Store before deploying this app.`);
+      return;
+    }
+    const request = app.start_request || {};
+    const baseName = app.default_name || request.name || app.id;
+    const usedNames = [
+      ...(containersData?.running || []),
+      ...(containersData?.stopped || []),
+    ].map((container: any) => (container.name || '').toLowerCase());
+    let name = baseName;
+    let suffix = 1;
+    while (usedNames.includes(name.toLowerCase())) {
+      name = `${app.id}-${String(suffix++).padStart(2, '0')}`;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      toast.error('Preset has an invalid default container name.');
+      return;
+    }
+
+    const rootfsPath = rootfsTemplate.local_path || `${storageDir}/${rootfsTemplate.id}`;
+    onNavigate('containers', {
+      ...request,
+      name,
+      rootfs: rootfsTemplate.type === 'img' ? undefined : rootfsPath,
+      rootfs_img: rootfsTemplate.type === 'img' ? rootfsPath : undefined,
+      id: rootfsTemplate.id,
+      marketplace_app_id: app.id,
+    });
   }
 
   function launchDistro(t: any) {
@@ -251,6 +290,16 @@
       </button>
 
       <button
+        on:click={() => (activeTab = 'apps')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'apps'
+          ? 'bg-purple text-black'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Layers size={12} />
+        <span>Apps</span>
+      </button>
+
+      <button
         on:click={() => (activeTab = 'blueprints')}
         class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'blueprints'
           ? 'bg-yellow text-black'
@@ -334,7 +383,63 @@
     </div>
   {/if}
 
-  {#if activeTab !== 'blueprints'}
+  {#if activeTab === 'apps'}
+    <div class="space-y-4">
+      <div class="flex gap-2 flex-wrap">
+        {#each [{ id: 'all', label: 'All Apps' }, { id: 'server', label: 'Server' }, { id: 'network', label: 'Network' }, { id: 'automation', label: 'Automation' }] as category}
+          <button
+            type="button"
+            on:click={() => (appFilter = category.id)}
+            class="px-3 py-1.5 rounded border-2 border-line text-[10px] font-black uppercase {appFilter === category.id ? 'bg-ink text-paper' : 'bg-panel text-muted'}"
+          >
+            {category.label}
+          </button>
+        {/each}
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {#each filteredApps as app}
+          {@const rootfsTemplate = templates.find((item) => item.id === app.required_rootfs_id && item.installed)}
+          {@const appNameExists = [...(containersData?.running || []), ...(containersData?.stopped || [])].some((container: any) => (container.name || '').toLowerCase() === (app.default_name || '').toLowerCase())}
+          <div class="p-5 card-brutal flex flex-col justify-between gap-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <span class="badge-brutal {app.category === 'network' ? 'bg-lime text-black' : app.category === 'automation' ? 'bg-purple text-black' : 'bg-cyan text-black'}">{app.category}</span>
+                <span class="text-[10px] font-mono text-muted">{app.start_request?.memory || 'No RAM limit'}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <Package size={18} />
+                <h3 class="text-base font-black uppercase text-ink">{app.name}</h3>
+              </div>
+              <p class="text-xs text-muted leading-relaxed">{app.description}</p>
+              <div class="text-[10px] font-mono text-muted">RootFS: {app.required_rootfs_id}</div>
+              {#if app.prerequisites?.length}
+                <ul class="list-disc pl-4 space-y-1 text-[10px] text-muted">
+                  {#each app.prerequisites as prerequisite}
+                    <li>{prerequisite}</li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if app.post_setup_note}
+                <p class="rounded border border-line bg-panel-alt p-2 text-[10px] text-ink">{app.post_setup_note}</p>
+              {/if}
+            </div>
+            <div class="pt-3 border-t-2 border-line flex items-center justify-between gap-2">
+              <span class="text-[10px] font-mono font-bold {rootfsTemplate ? 'text-lime' : 'text-orange'}">
+                {rootfsTemplate ? (appNameExists ? 'Container name in use' : 'Ready to deploy') : 'RootFS required'}
+              </span>
+              {#if !rootfsTemplate}
+                <button type="button" on:click={() => { activeTab = 'all'; }} class="btn-brutal !py-1.5 !px-3">Open RootFS Store</button>
+              {:else}
+                <button type="button" on:click={() => launchAppPreset(app)} class="btn-brutal btn-brutal-primary !py-1.5 !px-3">
+                  <span>Deploy</span><Play size={12} />
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {:else if activeTab !== 'blueprints'}
     <!-- Distribution Catalog Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each filteredDistros as t}

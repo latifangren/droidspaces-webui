@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/config"
@@ -537,7 +539,28 @@ func (c *Client) Scan() (string, error) {
 func (c *Client) Exec(container, command, user string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	return c.ExecContext(ctx, container, command, user)
+}
 
+// ExecContext runs a command inside a container with a caller-controlled
+// deadline. Commands are executed through the container shell; callers that
+// accept user input must validate it and must not interpolate it into command.
+func (c *Client) ExecContext(ctx context.Context, container, command, user string) (string, error) {
+	return c.execContext(ctx, container, command, user, 0)
+}
+
+// ExecContextBounded runs a command while retaining at most maxOutput bytes of
+// combined stdout+stderr output. Marketplace setup uses this to keep
+// package-manager output from growing the daemon's memory use without changing
+// the general exec endpoint.
+func (c *Client) ExecContextBounded(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
+	if maxOutput <= 0 {
+		return "", fmt.Errorf("maximum command output must be positive")
+	}
+	return c.execContext(ctx, container, command, user, maxOutput)
+}
+
+func (c *Client) execContext(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
 	args := []string{"--name=" + container, "run"}
 	if user != "" {
 		args = append(args, "-u", user)
@@ -545,23 +568,75 @@ func (c *Client) Exec(container, command, user string) (string, error) {
 	args = append(args, "sh", "-c", command)
 
 	cmd := exec.CommandContext(ctx, c.binPath, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	var boundedStdout, boundedStderr *tailBuffer
+	stdout, stderr := io.Writer(&stdoutBuf), io.Writer(&stderrBuf)
+	if maxOutput > 0 {
+		boundedStdout = &tailBuffer{max: maxOutput}
+		boundedStderr = &tailBuffer{max: maxOutput}
+		stdout, stderr = boundedStdout, boundedStderr
+	}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	err := cmd.Run()
-	output := stdout.String()
-	if stderr.Len() > 0 {
-		if output != "" {
-			output += "\n"
+	var output string
+	if maxOutput > 0 {
+		output = boundedStdout.String()
+		stderrOutput := boundedStderr.String()
+		if stderrOutput != "" {
+			if output != "" && len(output)+1+len(stderrOutput) <= maxOutput {
+				output += "\n" + stderrOutput
+			} else if output == "" && len(stderrOutput) > maxOutput {
+				output = stderrOutput[len(stderrOutput)-maxOutput:]
+			} else {
+				output = stderrOutput
+			}
 		}
-		output += stderr.String()
+		if len(output) > maxOutput {
+			output = output[len(output)-maxOutput:]
+		}
+	} else {
+		output = stdoutBuf.String()
+		if stderrBuf.Len() > 0 {
+			if output != "" {
+				output += "\n"
+			}
+			output += stderrBuf.String()
+		}
 	}
 
 	if err != nil {
 		return output, fmt.Errorf("%w: %s", err, output)
 	}
 	return output, nil
+}
+
+type tailBuffer struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(p) >= b.max {
+		b.buf = append(b.buf[:0], p[len(p)-b.max:]...)
+		return len(p), nil
+	}
+	remaining := b.max - len(p)
+	if len(b.buf) > remaining {
+		b.buf = append(b.buf[:0], b.buf[len(b.buf)-remaining:]...)
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
 }
 
 func (c *Client) findHostShell() string {

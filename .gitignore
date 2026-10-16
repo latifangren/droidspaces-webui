@@ -9,3 +9,8 @@ web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
 /.tmp
+
+# Local artifacts
+/dsweb.exe
+/node_modules/
+

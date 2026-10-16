@@ -22,6 +22,7 @@
   export let runningContainers: any[] = [];
   export let existingContainers: any[] = [];
   export let isSubmitting: boolean = false;
+  export let submitLabel: string = 'Create Container';
   export let prefill: any = null;
   export let onRefreshTemplates: (() => Promise<void>) | (() => void) = () => {};
   export let onClose: () => void;
@@ -93,9 +94,27 @@
       const idx = ramOptions.findIndex((r) => r.value === prefill.memory);
       if (idx !== -1) ramSliderIndex = idx;
     }
-    if (prefill.ports) {
-      ports = prefill.ports;
+    if (prefill.cpus) {
+      const idx = cpuOptions.findIndex((c) => c.value === prefill.cpus);
+      if (idx !== -1) cpuSliderIndex = idx;
     }
+    if (prefill.ports) {
+      ports = Array.isArray(prefill.ports) ? prefill.ports.join(', ') : prefill.ports;
+    }
+    if (prefill.hostname !== undefined) hostname = prefill.hostname || '';
+    if (prefill.dns !== undefined) dns = prefill.dns || '';
+    if (prefill.android_storage !== undefined) androidStorage = prefill.android_storage;
+    if (prefill.hw_access !== undefined) hwAccess = prefill.hw_access;
+    if (prefill.gpu !== undefined) gpu = prefill.gpu;
+    if (prefill.termux_x11 !== undefined) termuxX11 = prefill.termux_x11;
+    if (prefill.anland !== undefined) anland = prefill.anland;
+    if (prefill.pulse_audio !== undefined) pulseAudio = prefill.pulse_audio;
+    if (prefill.volatile !== undefined) volatileMode = prefill.volatile;
+    if (prefill.run_at_boot !== undefined) runAtBoot = prefill.run_at_boot;
+    if (prefill.run_at_boot_priority !== undefined) runAtBootPriority = prefill.run_at_boot_priority;
+    if (prefill.custom_init !== undefined) customInit = prefill.custom_init || '';
+    if (prefill.env_vars) envVars = Array.isArray(prefill.env_vars) ? prefill.env_vars.join('\\n') : prefill.env_vars;
+    if (prefill.binds) customBinds = Array.isArray(prefill.binds) ? prefill.binds.join('\\n') : prefill.binds;
     if (prefill.allow_sandboxing !== undefined) {
       allowSandboxing = prefill.allow_sandboxing;
     }
@@ -943,7 +962,7 @@
             disabled={isSubmitting}
             class="btn-brutal btn-brutal-primary font-black"
           >
-            {isSubmitting ? 'Creating...' : 'Start Container'}
+            {isSubmitting ? 'Creating...' : submitLabel}
           </button>
         </div>
       </form>

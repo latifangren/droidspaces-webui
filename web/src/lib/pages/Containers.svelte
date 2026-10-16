@@ -28,6 +28,8 @@
   export let onRefresh: () => void;
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let prefillContainer: any = null;
+  let activeSetupJob: any = null;
+  let setupPollTimer: ReturnType<typeof setTimeout> | null = null;
   export let onNavigate: (route: string, data?: any) => void = () => {};
 
   let activeFilter = 'all'; // 'all' | 'running' | 'stopped'
@@ -82,6 +84,9 @@
   onMount(() => {
     loadTemplates();
     loadHostInterfaces();
+    return () => {
+      if (setupPollTimer) clearTimeout(setupPollTimer);
+    };
   });
 
   async function loadTemplates() {
@@ -260,6 +265,55 @@
     confirmShow = true;
   }
 
+  async function startMarketplaceSetup(appID: string, containerName: string) {
+    try {
+      const res = await fetch('/api/marketplace/setup-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: appID, container_name: containerName }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.data?.id) {
+        toast.error(`Container was created, but app setup could not start: ${json.error || 'Unknown error'}`);
+        return;
+      }
+      activeSetupJob = json.data;
+      toast.info(`Setting up ${appID} in ${containerName}...`);
+      pollMarketplaceSetup(json.data.id);
+    } catch (e: any) {
+      toast.error(`Container was created, but app setup could not start: ${e.message}`);
+    }
+  }
+
+  async function retryMarketplaceSetup() {
+    if (!activeSetupJob?.preset_id || !activeSetupJob?.container_name) return;
+    await startMarketplaceSetup(activeSetupJob.preset_id, activeSetupJob.container_name);
+  }
+
+  async function pollMarketplaceSetup(jobID: string) {
+    try {
+      const res = await fetch(`/api/marketplace/setup-jobs/${encodeURIComponent(jobID)}`);
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.data) {
+        activeSetupJob = { ...activeSetupJob, status: 'unknown', error: json.error || 'Setup status unavailable.' };
+        return;
+      }
+      activeSetupJob = json.data;
+      if (json.data.status === 'succeeded') {
+        toast.success(`${json.data.preset_id} setup completed.`);
+        onRefresh();
+        return;
+      }
+      if (json.data.status === 'partial_failure') {
+        toast.error(`Setup stopped at ${json.data.current_step || 'an unknown step'}: ${json.data.error || 'Check the container terminal.'}`);
+        return;
+      }
+      setupPollTimer = setTimeout(() => pollMarketplaceSetup(jobID), 2000);
+    } catch (e: any) {
+      activeSetupJob = { ...activeSetupJob, status: 'unknown', error: e.message };
+    }
+  }
+
   async function handleCreateContainer(payload: any) {
     isSubmittingCreate = true;
     try {
@@ -270,10 +324,14 @@
       });
       const json = await res.json();
       if (json.success) {
+        const appID = prefillContainer?.marketplace_app_id || '';
         showCreateModal = false;
         prefillContainer = null;
         toast.success('Container created and started.');
         onRefresh();
+        if (appID) {
+          await startMarketplaceSetup(appID, payload.name);
+        }
       } else {
         toast.error('Failed: ' + (json.error || 'Creation failed'));
       }
@@ -286,6 +344,30 @@
 </script>
 
 <div class="space-y-6">
+  {#if activeSetupJob}
+    <section class="card-brutal p-3 space-y-2" aria-live="polite">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-xs font-black uppercase text-ink">Marketplace setup · {activeSetupJob.preset_id}</h3>
+          <p class="text-[10px] font-mono text-muted">Container: {activeSetupJob.container_name} · {activeSetupJob.status}</p>
+        </div>
+        {#if activeSetupJob.status === 'unknown' && activeSetupJob.id}
+          <div class="flex gap-1.5">
+            <button class="btn-brutal !py-1 !px-2 text-[10px]" on:click={() => pollMarketplaceSetup(activeSetupJob.id)}>Check status</button>
+            <button class="btn-brutal !py-1 !px-2 text-[10px]" on:click={retryMarketplaceSetup}>Retry setup</button>
+          </div>
+        {:else if activeSetupJob.status === 'partial_failure'}
+          <button class="btn-brutal !py-1 !px-2 text-[10px]" on:click={retryMarketplaceSetup}>Retry setup</button>
+        {/if}
+      </div>
+      <div class="h-2 rounded bg-panel-alt overflow-hidden border border-line">
+        <div class="h-full bg-primary transition-all" style={`width:${activeSetupJob.total_steps ? Math.round((activeSetupJob.completed_steps / activeSetupJob.total_steps) * 100) : activeSetupJob.status === 'succeeded' ? 100 : 0}%`}></div>
+      </div>
+      <p class="text-[10px] font-mono text-muted">Step {activeSetupJob.completed_steps || 0}/{activeSetupJob.total_steps || 0}: {activeSetupJob.current_step || activeSetupJob.status}</p>
+      {#if activeSetupJob.error}<p class="text-[10px] text-red">{activeSetupJob.error}</p>{/if}
+      {#if activeSetupJob.output}<pre class="max-h-32 overflow-auto rounded bg-[#09090b] p-2 text-[9px] text-muted whitespace-pre-wrap">{activeSetupJob.output}</pre>{/if}
+    </section>
+  {/if}
   <!-- Top Bar & Controls -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
@@ -606,6 +688,7 @@
     existingContainers={allContainers}
     runningContainers={containersData?.running || []}
     isSubmitting={isSubmittingCreate}
+    submitLabel={prefillContainer?.marketplace_app_id ? 'Deploy + Configure' : 'Start Container'}
     prefill={prefillContainer}
     onRefreshTemplates={loadTemplates}
     onClose={() => {

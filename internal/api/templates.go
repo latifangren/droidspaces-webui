@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/latifangren/droidspaces-webui/internal/marketplace"
 	"github.com/latifangren/droidspaces-webui/internal/templates"
 )
 
@@ -12,6 +13,7 @@ func (s *Server) handleTemplates(w http.ResponseWriter, r *http.Request) {
 	activeJob, progress, lastErr := templates.GetDownloadStatus()
 	s.sendJSON(w, http.StatusOK, map[string]interface{}{
 		"templates":   list,
+		"apps":        marketplace.PublicView().Presets,
 		"active_job":  activeJob,
 		"progress":    progress,
 		"last_error":  lastErr,

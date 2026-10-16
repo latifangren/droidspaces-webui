@@ -229,10 +229,32 @@ func TestTemplatesEndpoints(t *testing.T) {
 	s, _, token := setupTestServer(t)
 	h := s.Handler()
 
-	// 1. List templates and status
+	// 1. List templates, marketplace presets, and status.
 	w := doRequest(h, token, "GET", "/api/templates", nil)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 listing templates, got %d", w.Code)
+	}
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Templates []json.RawMessage `json:"templates"`
+			Apps      []struct {
+				ID string `json:"id"`
+			} `json:"apps"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode templates response: %v", err)
+	}
+	if !response.Success || len(response.Data.Apps) != 3 {
+		t.Fatalf("expected standard envelope and 3 marketplace presets, got success=%t apps=%d", response.Success, len(response.Data.Apps))
+	}
+	seenApps := make(map[string]bool)
+	for _, app := range response.Data.Apps {
+		if app.ID == "" || seenApps[app.ID] {
+			t.Errorf("empty or duplicate marketplace app ID %q", app.ID)
+		}
+		seenApps[app.ID] = true
 	}
 
 	// 2. Start download with empty ID

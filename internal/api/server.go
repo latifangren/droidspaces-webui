@@ -10,19 +10,23 @@ import (
 
 	"github.com/latifangren/droidspaces-webui/internal/auth"
 	"github.com/latifangren/droidspaces-webui/internal/hardware"
+	"github.com/latifangren/droidspaces-webui/internal/marketplace"
+	"github.com/latifangren/droidspaces-webui/internal/model"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
 	"github.com/latifangren/droidspaces-webui/internal/terminal"
 	"github.com/latifangren/droidspaces-webui/web"
 )
 
 type Server struct {
-	mux          *http.ServeMux
-	client       *runner.Client
-	termManager  *terminal.Manager
-	authMgr      *auth.AuthManager
-	loginLimiter *rateLimiter
-	portMu       sync.RWMutex
-	port         int
+	mux             *http.ServeMux
+	client          *runner.Client
+	termManager     *terminal.Manager
+	marketplaceJobs *marketplace.JobManager
+	marketplaceShow func() (*model.ShowResult, error)
+	authMgr         *auth.AuthManager
+	loginLimiter    *rateLimiter
+	portMu          sync.RWMutex
+	port            int
 }
 
 func (s *Server) GetPort() int {
@@ -40,10 +44,13 @@ func (s *Server) SetPort(port int) {
 func NewServer(port int) *Server {
 	client := runner.NewClient()
 	s := &Server{
-		mux:          http.NewServeMux(),
-		client:       client,
-		termManager:  terminal.NewManager(client),
-		authMgr:      auth.NewAuthManager(),
+		mux:             http.NewServeMux(),
+		client:          client,
+		termManager:     terminal.NewManager(client),
+		marketplaceJobs: marketplace.NewJobManager(client),
+		marketplaceShow: client.Show,
+		authMgr:         auth.NewAuthManager(),
+
 		loginLimiter: newLoginRateLimiter(),
 		port:         port,
 	}
@@ -120,6 +127,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/templates", s.handleTemplates)
 	s.mux.HandleFunc("/api/templates/download", s.handleTemplateDownload)
 	s.mux.HandleFunc("/api/templates/delete", s.handleTemplateDelete)
+	s.mux.HandleFunc("/api/marketplace/setup-jobs", s.handleMarketplaceSetupJobs)
+	s.mux.HandleFunc("/api/marketplace/setup-jobs/", s.handleMarketplaceSetupJob)
 
 	// Interactive WebSocket Terminal & Persistent Sessions
 	s.mux.HandleFunc("/api/terminal/sessions", s.handleTerminalSessions)

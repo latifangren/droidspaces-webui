@@ -16,6 +16,7 @@
   } from 'lucide-svelte';
   import CloneModal from '../components/containers/CloneModal.svelte';
   import { toast } from '../stores/toast';
+  import ResourceGraph from '../components/dashboard/ResourceGraph.svelte';
   export let statusData: any = {};
   export let containersData: any = { total: 0, running: [], stopped: [] };
   export let onNavigate: (route: string, data?: any) => void;
@@ -180,6 +181,8 @@
       </div>
     </div>
   </div>
+
+  <ResourceGraph {statusData} {containersData} />
 
   <!-- Active Linux Containers -->
   <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal space-y-3">
