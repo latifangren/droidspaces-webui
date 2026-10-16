@@ -3,6 +3,7 @@ package api
 import (
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -111,29 +112,84 @@ func (rl *rateLimiter) ResetAll() {
 	rl.attempts = make(map[string][]time.Time)
 }
 
-// getClientIP extracts the client IP address from the request.
-// It checks standard proxy headers (X-Forwarded-For, X-Real-IP)
-// before falling back to RemoteAddr.
+// getClientIP returns the direct peer address. Forwarding headers are ignored unless
+// the server is explicitly configured to trust a proxy.
+//
+// When DSWEB_TRUSTED_PROXY_CIDRS is set (comma-separated CIDR list) and the
+// direct peer address falls inside one of those ranges, the client IP is
+// taken from X-Forwarded-For (or X-Real-IP) and validated.
 func getClientIP(r *http.Request) string {
+	host := peerHost(r)
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "unknown"
+	}
+	if !isTrustedProxy(ip) {
+		return ip.String()
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
-		ip := strings.TrimSpace(parts[0])
-		if ip != "" {
-			return ip
+		// Walk from the direct peer toward the client, skipping configured
+		// trusted proxies. The first untrusted address is the rate-limit key.
+		for i := len(parts) - 1; i >= 0; i-- {
+			candidate := net.ParseIP(strings.TrimSpace(parts[i]))
+			if candidate == nil {
+				continue
+			}
+			if isTrustedProxy(candidate) {
+				continue
+			}
+			return candidate.String()
 		}
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		ip := strings.TrimSpace(xri)
-		if ip != "" {
-			return ip
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		if parsed := net.ParseIP(xri); parsed != nil {
+			return parsed.String()
 		}
 	}
+	return ip.String()
+}
+
+func peerHost(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil && host != "" {
-		return host
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
 	}
-	if r.RemoteAddr != "" {
-		return r.RemoteAddr
+	return host
+}
+
+var (
+	trustedProxyOnce  sync.Once
+	trustedProxyCIDRs []*net.IPNet
+)
+
+func isTrustedProxy(ip net.IP) bool {
+	trustedProxyOnce.Do(func() {
+		raw := os.Getenv("DSWEB_TRUSTED_PROXY_CIDRS")
+		if raw == "" {
+			return
+		}
+		for _, cidr := range strings.Split(raw, ",") {
+			cidr = strings.TrimSpace(cidr)
+			if cidr == "" {
+				continue
+			}
+			if _, n, err := net.ParseCIDR(cidr); err == nil && n != nil {
+				trustedProxyCIDRs = append(trustedProxyCIDRs, n)
+			}
+		}
+	})
+	for _, n := range trustedProxyCIDRs {
+		if n.Contains(ip) {
+			return true
+		}
 	}
-	return "unknown"
+	return false
+}
+
+// resetTrustedProxyForTest exposes package state to tests so the trusted-proxy
+// initializer can re-run after the caller changes DSWEB_TRUSTED_PROXY_CIDRS.
+func resetTrustedProxyForTest() {
+	trustedProxyOnce = sync.Once{}
+	trustedProxyCIDRs = nil
 }

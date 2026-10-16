@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -179,9 +180,15 @@ func TestManagerOperations(t *testing.T) {
 	}
 
 	// Generate session ID
-	id1 := generateSessionID()
-	id2 := generateSessionID()
-	if len(id1) != 12 || len(id2) != 12 || id1 == id2 {
+	id1, err := generateSessionID()
+	if err != nil {
+		t.Fatalf("generateSessionID failed: %v", err)
+	}
+	id2, err := generateSessionID()
+	if err != nil {
+		t.Fatalf("generateSessionID failed: %v", err)
+	}
+	if len(id1) != 36 || len(id2) != 36 || id1 == id2 {
 		t.Errorf("unexpected session IDs: %s vs %s", id1, id2)
 	}
 
@@ -263,6 +270,76 @@ func TestManagerOperations(t *testing.T) {
 	}
 }
 
+type failingBroadcaster struct {
+	closed bool
+}
+
+func (b *failingBroadcaster) WriteMessage(int, []byte) error { return fmt.Errorf("queue full") }
+func (b *failingBroadcaster) Close()                         { b.closed = true }
+
+func TestAttachReplayPrecedesLiveOutput(t *testing.T) {
+	_, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	s := &Session{ID: "ordered", Buffer: NewRingBuffer(128), ptmx: writer, clients: make(map[string]Broadcaster), clientSizes: make(map[string]winsize)}
+	_, _ = s.Buffer.Write([]byte("old"))
+	client := &mockBroadcaster{}
+	s.Attach("client", client)
+	s.outputMu.Lock()
+	_, _ = s.Buffer.Write([]byte("new"))
+	client.WriteMessage(2, []byte("new"))
+	s.outputMu.Unlock()
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.messages) != 2 || string(client.messages[0]) != "old" || string(client.messages[1]) != "new" {
+		t.Fatalf("unexpected replay/live order: %q", client.messages)
+	}
+}
+
+func TestCloseSendsExitNoticeBeforeClosingSocket(t *testing.T) {
+	_, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wPipe.Close()
+	client := &mockBroadcaster{}
+	s := &Session{
+		ID:      "exit-notice",
+		Buffer:  NewRingBuffer(64),
+		ptmx:    wPipe,
+		clients: map[string]Broadcaster{"client-1": client},
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	if len(client.messages) == 0 {
+		t.Fatal("expected session-closed notice before socket close")
+	}
+	if !bytes.Contains(client.messages[len(client.messages)-1], []byte("Session closed")) {
+		t.Fatalf("expected terminal notice, got %q", client.messages)
+	}
+}
+
+func TestSlowBroadcasterIsDetached(t *testing.T) {
+	_, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	bad := &failingBroadcaster{}
+	s := &Session{ID: "slow", Buffer: NewRingBuffer(128), ptmx: writer, clients: map[string]Broadcaster{"slow-client": bad}, clientSizes: make(map[string]winsize)}
+	s.outputMu.Lock()
+	s.detachFailedClient("slow-client", bad)
+	s.outputMu.Unlock()
+	if s.ClientCount() != 0 || !bad.closed {
+		t.Fatalf("slow client retained: count=%d closed=%v", s.ClientCount(), bad.closed)
+	}
+}
+
 func TestSessionIdleTimerExpiry(t *testing.T) {
 	_, wPipe, err := os.Pipe()
 	if err != nil {
@@ -291,7 +368,6 @@ func TestSessionIdleTimerExpiry(t *testing.T) {
 		t.Errorf("idle timer did not expire and close session")
 	}
 }
-
 
 func TestReadPTYLoop(t *testing.T) {
 	rPipe, wPipe, err := os.Pipe()

@@ -30,15 +30,21 @@ var upgrader = websocket.Upgrader{
 		return strings.EqualFold(u.Host, r.Host)
 	},
 }
+
 type resizeMessage struct {
 	Type string `json:"type"`
 	Cols uint16 `json:"cols"`
 	Rows uint16 `json:"rows"`
 }
 
+type queuedWSMessage struct {
+	messageType int
+	data        []byte
+}
+
 type wsClientBroadcaster struct {
 	conn      *websocket.Conn
-	sendChan  chan []byte
+	sendChan  chan queuedWSMessage
 	done      chan struct{}
 	closeOnce sync.Once
 }
@@ -46,7 +52,7 @@ type wsClientBroadcaster struct {
 func newWSClientBroadcaster(conn *websocket.Conn) *wsClientBroadcaster {
 	b := &wsClientBroadcaster{
 		conn:     conn,
-		sendChan: make(chan []byte, 256),
+		sendChan: make(chan queuedWSMessage, 256),
 		done:     make(chan struct{}),
 	}
 	go b.writerLoop()
@@ -60,8 +66,12 @@ func (w *wsClientBroadcaster) writerLoop() {
 			if !ok {
 				return
 			}
+			if msg.messageType < 0 {
+				w.Close()
+				return
+			}
 			_ = w.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if err := w.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+			if err := w.conn.WriteMessage(msg.messageType, msg.data); err != nil {
 				w.Close()
 				return
 			}
@@ -82,7 +92,7 @@ func (w *wsClientBroadcaster) WriteMessage(messageType int, data []byte) error {
 	copy(copied, data)
 
 	select {
-	case w.sendChan <- copied:
+	case w.sendChan <- queuedWSMessage{messageType: messageType, data: copied}:
 		return nil
 	default:
 		// Buffer full: drop chunk to prevent slow client from halting container PTY
@@ -99,10 +109,27 @@ func (w *wsClientBroadcaster) Close() {
 	})
 }
 
-func generateClientID() string {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	return fmt.Sprintf("cli_%s", hex.EncodeToString(b))
+// CloseAfterQueuedMessages appends a close marker so already-queued terminal
+// notifications are written before the connection is closed.
+func (w *wsClientBroadcaster) CloseAfterQueuedMessages() {
+	select {
+	case <-w.done:
+		return
+	default:
+	}
+	select {
+	case w.sendChan <- queuedWSMessage{messageType: -1}:
+	default:
+		w.Close()
+	}
+}
+
+func generateClientID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate terminal client ID: %w", err)
+	}
+	return fmt.Sprintf("cli_%s", hex.EncodeToString(b)), nil
 }
 
 func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +166,11 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 		sess = created
 	}
 
-	clientID := generateClientID()
+	clientID, err := generateClientID()
+	if err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m[-] Failed to allocate terminal client ID\x1b[0m\r\n"))
+		return
+	}
 	broadcaster := newWSClientBroadcaster(conn)
 	defer broadcaster.Close()
 
@@ -148,7 +179,7 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	defer sess.Detach(clientID)
 
 	// WebSocket input loop -> writes keystrokes into PTY or resizes terminal
-	readLoop:
+readLoop:
 	for {
 		msgType, msg, err := conn.ReadMessage()
 		if err != nil {

@@ -21,6 +21,10 @@ type Broadcaster interface {
 	WriteMessage(messageType int, data []byte) error
 }
 
+type closeableBroadcaster interface {
+	Close()
+}
+
 // winsize holds client-reported terminal window dimensions.
 type winsize struct {
 	Cols uint16
@@ -45,11 +49,13 @@ type Session struct {
 	clients     map[string]Broadcaster
 	clientSizes map[string]winsize
 	mu          sync.RWMutex
+	outputMu    sync.Mutex
 	detachTimer *time.Timer
 	idleTimeout time.Duration
 	closed      bool
 	onClose     func(id string)
 }
+
 var (
 	ptyStart   = pty.Start
 	ptySetsize = pty.Setsize
@@ -105,23 +111,31 @@ func NewSession(id, title, target, container, user string, cmd *exec.Cmd, onClos
 func (s *Session) readPTYLoop() {
 	buf := make([]byte, 4096)
 	for {
-		n, err := s.ptmx.Read(buf)
+		s.mu.RLock()
+		ptmx := s.ptmx
+		s.mu.RUnlock()
+		if ptmx == nil {
+			return
+		}
+		n, err := ptmx.Read(buf)
 		if n > 0 {
-			chunk := buf[:n]
-			// 1. Append to circular ring buffer for replay
+			chunk := append([]byte(nil), buf[:n]...)
+			s.outputMu.Lock()
 			_, _ = s.Buffer.Write(chunk)
 
-			// 2. Broadcast to all active attached WebSocket participants without holding lock
 			s.mu.RLock()
-			activeClients := make([]Broadcaster, 0, len(s.clients))
-			for _, client := range s.clients {
-				activeClients = append(activeClients, client)
+			activeClients := make(map[string]Broadcaster, len(s.clients))
+			for id, client := range s.clients {
+				activeClients[id] = client
 			}
 			s.mu.RUnlock()
 
-			for _, client := range activeClients {
-				_ = client.WriteMessage(websocket.BinaryMessage, chunk)
+			for id, client := range activeClients {
+				if err := client.WriteMessage(websocket.BinaryMessage, chunk); err != nil {
+					s.detachFailedClient(id, client)
+				}
 			}
+			s.outputMu.Unlock()
 		}
 
 		if err != nil {
@@ -134,12 +148,12 @@ func (s *Session) readPTYLoop() {
 	}
 }
 
-// Attach registers a WebSocket client to this session and replays the current output buffer.
+// Attach registers a WebSocket client and queues scrollback before live output.
 func (s *Session) Attach(clientID string, client Broadcaster) {
+	s.outputMu.Lock()
 	s.mu.Lock()
 	closed := s.closed
 	if !closed {
-		// Cancel idle detach timer when a client reconnects
 		if s.detachTimer != nil {
 			s.detachTimer.Stop()
 			s.detachTimer = nil
@@ -148,14 +162,36 @@ func (s *Session) Attach(clientID string, client Broadcaster) {
 	}
 	s.mu.Unlock()
 
-	// Replay buffered scrollback immediately to the joining client
 	replayData := s.Buffer.Bytes()
+	var err error
 	if len(replayData) > 0 {
-		_ = client.WriteMessage(websocket.BinaryMessage, replayData)
+		err = client.WriteMessage(websocket.BinaryMessage, replayData)
 	}
-
 	if closed {
-		_ = client.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m[Process exited]\x1b[0m\r\n"))
+		err = client.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m[Process exited]\x1b[0m\r\n"))
+	}
+	if err != nil {
+		s.detachFailedClient(clientID, client)
+	}
+	s.outputMu.Unlock()
+}
+
+func (s *Session) detachFailedClient(clientID string, client Broadcaster) {
+	s.mu.Lock()
+	if current, ok := s.clients[clientID]; ok && current == client {
+		delete(s.clients, clientID)
+		delete(s.clientSizes, clientID)
+		if len(s.clients) == 0 && !s.closed {
+			s.LastDetachedAt = time.Now()
+			if s.detachTimer != nil {
+				s.detachTimer.Stop()
+			}
+			s.detachTimer = time.AfterFunc(s.idleTimeout, func() { _ = s.Close() })
+		}
+	}
+	s.mu.Unlock()
+	if c, ok := client.(closeableBroadcaster); ok {
+		c.Close()
 	}
 }
 
@@ -283,6 +319,8 @@ func (s *Session) IsRunning() bool {
 
 // Close terminates the session, kills the process, and closes the PTY.
 func (s *Session) Close() error {
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -295,9 +333,20 @@ func (s *Session) Close() error {
 		s.detachTimer = nil
 	}
 
-	// Close attached clients
+	// Queue the exit notice before closing socket writers so the terminal UI can
+	// mark the session as dead instead of silently reconnecting.
 	for _, client := range s.clients {
-		_ = client.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m[Session closed]\x1b[0m\r\n"))
+		if err := client.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m[Session closed]\x1b[0m\r\n")); err != nil {
+			if c, ok := client.(closeableBroadcaster); ok {
+				c.Close()
+			}
+			continue
+		}
+		if c, ok := client.(interface{ CloseAfterQueuedMessages() }); ok {
+			c.CloseAfterQueuedMessages()
+		} else if c, ok := client.(closeableBroadcaster); ok {
+			c.Close()
+		}
 	}
 	s.clients = make(map[string]Broadcaster)
 

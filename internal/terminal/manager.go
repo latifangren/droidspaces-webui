@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/latifangren/droidspaces-webui/internal/config"
 	"github.com/latifangren/droidspaces-webui/internal/model"
 	"github.com/latifangren/droidspaces-webui/internal/runner"
 )
@@ -31,11 +33,13 @@ func NewManager(client *runner.Client) *Manager {
 	}
 }
 
-// generateSessionID generates a short, unique session identifier.
-func generateSessionID() string {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	return "ses_" + hex.EncodeToString(b)
+// generateSessionID generates a cryptographically random session identifier.
+func generateSessionID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate terminal session ID: %w", err)
+	}
+	return "ses_" + hex.EncodeToString(b), nil
 }
 
 func (m *Manager) findHostShell() string {
@@ -59,6 +63,9 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 	if target == "" {
 		target = "container"
 	}
+	if target != "host" && target != "container" {
+		return nil, fmt.Errorf("invalid terminal target: %s", target)
+	}
 
 	var cmd *exec.Cmd
 	binPath := "droidspaces"
@@ -73,25 +80,51 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 			title = "Host Shell (root)"
 		}
 	} else {
-		if container == "" {
-			return nil, fmt.Errorf("container name is required for container target")
+		if !config.SafeContainerName(container) {
+			return nil, fmt.Errorf("invalid container name: %s", container)
 		}
 
-		// Ensure container is running before entering
 		if m.runner != nil {
 			show, err := m.runner.Show()
-			if err == nil {
-				isRunning := false
-				for _, r := range show.Running {
-					if r.Name == container {
-						isRunning = true
+			if err != nil {
+				return nil, fmt.Errorf("check container status: %w", err)
+			}
+			isRunning := false
+			for _, r := range show.Running {
+				if r.Name == container {
+					isRunning = true
+					break
+				}
+			}
+			if !isRunning {
+				log.Printf("[terminal] Auto-starting container %s for terminal session...", container)
+				if err := m.runner.Start(model.StartRequest{Name: container}); err != nil {
+					return nil, fmt.Errorf("start container %s: %w", container, err)
+				}
+				const readinessTimeout = 30 * time.Second
+				deadline := time.Now().Add(readinessTimeout)
+				for time.Now().Before(deadline) {
+					ctx, cancel := context.WithDeadline(context.Background(), deadline)
+					show, err = m.runner.ShowContext(ctx)
+					cancel()
+					if err == nil && show != nil {
+						for _, running := range show.Running {
+							if running.Name == container {
+								isRunning = true
+								break
+							}
+						}
+					}
+					if isRunning {
 						break
 					}
+					if !time.Now().Before(deadline) {
+						break
+					}
+					time.Sleep(250 * time.Millisecond)
 				}
 				if !isRunning {
-					log.Printf("[terminal] Auto-starting container %s for terminal session...", container)
-					_ = m.runner.Start(model.StartRequest{Name: container})
-					time.Sleep(500 * time.Millisecond)
+					return nil, fmt.Errorf("container %s did not become ready within 30 seconds", container)
 				}
 			}
 		}
@@ -119,10 +152,25 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 		"LANG=en_US.UTF-8",
 	)
 
-	sessionID := generateSessionID()
+	var sessionID string
+	for attempt := 0; attempt < 3; attempt++ {
+		id, err := generateSessionID()
+		if err != nil {
+			return nil, err
+		}
+		m.mu.RLock()
+		_, exists := m.sessions[id]
+		m.mu.RUnlock()
+		if !exists {
+			sessionID = id
+			break
+		}
+	}
+	if sessionID == "" {
+		return nil, fmt.Errorf("could not allocate unique terminal session ID")
+	}
 
 	s, err := NewSession(sessionID, title, target, container, user, cmd, func(closedID string) {
-		// Retain session in registry for 5 minutes after process exit so scrollback can still be viewed
 		time.AfterFunc(5*time.Minute, func() {
 			m.mu.Lock()
 			delete(m.sessions, closedID)
@@ -134,6 +182,11 @@ func (m *Manager) CreateSession(target, container, user, title string) (*Session
 	}
 
 	m.mu.Lock()
+	if _, exists := m.sessions[sessionID]; exists {
+		m.mu.Unlock()
+		_ = s.Close()
+		return nil, fmt.Errorf("terminal session ID collision")
+	}
 	m.sessions[sessionID] = s
 	m.mu.Unlock()
 

@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
@@ -126,6 +128,92 @@ invalid_line_no_equals
 	newCfg, err := ReadContainerConfig(newBox)
 	if err != nil || newCfg["foo"] != "bar" {
 		t.Fatalf("failed to read created config: %v", err)
+	}
+}
+
+func TestAtomicReplaceSurvivesMidReadReplacement(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+	name := "race-box"
+	if err := os.MkdirAll(filepath.Join(tmpDir, name), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, name, "container.config"), []byte("alpha=1\nbeta=2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	InvalidateCache(name)
+
+	if cfg, err := ReadContainerConfig(name); err != nil || cfg["alpha"] != "1" || cfg["beta"] != "2" {
+		t.Fatalf("expected initial read success, got err=%v cfg=%v", err, cfg)
+	}
+	if err := WriteContainerConfigKeys(name, map[string]string{"gamma": "3"}); err != nil {
+		t.Fatal(err)
+	}
+	InvalidateCache(name)
+	if cfg, err := ReadContainerConfig(name); err != nil || cfg["gamma"] != "3" || cfg["alpha"] != "1" {
+		t.Fatalf("post-write read lost data: %v %v", err, cfg)
+	}
+}
+
+func TestLockRegistryIsBoundedByActivity(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+	for i := 0; i < 5; i++ {
+		name := "box" + strconv.Itoa(i)
+		if err := os.MkdirAll(filepath.Join(tmpDir, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, name, "container.config"), []byte("k=v\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteContainerConfigKeys(name, map[string]string{"k": "v2"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeMu.Lock()
+	count := len(writeLocks)
+	writeMu.Unlock()
+	if count != 0 {
+		t.Fatalf("expected idle path locks to be released, got %d", count)
+	}
+	// Subsequent paths are also removed once their writer finishes.
+	if err := WriteContainerConfigKeys("next-box", map[string]string{"k": "v3"}); err != nil {
+		t.Fatal(err)
+	}
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	if len(writeLocks) != 0 {
+		t.Fatalf("expected registry cleanup after write, got %d entries", len(writeLocks))
+	}
+}
+
+func TestConcurrentConfigUpdatesPreserveBothKeys(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+	containerDir := filepath.Join(tmpDir, "parallel-box")
+	if err := os.MkdirAll(containerDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(containerDir, "container.config"), []byte("initial=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, key := range []string{"alpha", "beta"} {
+		wg.Add(1)
+		go func(key string) {
+			defer wg.Done()
+			if err := WriteContainerConfigKeys("parallel-box", map[string]string{key: "1"}); err != nil {
+				t.Errorf("write %s: %v", key, err)
+			}
+		}(key)
+	}
+	wg.Wait()
+	cfg, err := ReadContainerConfig("parallel-box")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg["alpha"] != "1" || cfg["beta"] != "1" {
+		t.Fatalf("concurrent updates lost: %#v", cfg)
 	}
 }
 

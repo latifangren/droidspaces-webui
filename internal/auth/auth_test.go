@@ -1,13 +1,23 @@
 package auth
 
 import (
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestPBKDF2SHA256KnownVector(t *testing.T) {
+	got := hex.EncodeToString(pbkdf2SHA256([]byte("password"), []byte("salt"), 1, 32))
+	want := "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"
+	if got != want {
+		t.Fatalf("PBKDF2-SHA256 vector mismatch: got %s, want %s", got, want)
+	}
+}
 
 func TestAuthManager(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -112,28 +122,28 @@ func TestAuthManager(t *testing.T) {
 		t.Errorf("expected old password to fail")
 	}
 
-	// Test setPasswordInMemory
-	am.setPasswordInMemory("DirectMemoryPassword")
-	if !am.VerifyPassword("DirectMemoryPassword") {
-		t.Errorf("expected direct memory password to match")
+	// Verify the persisted credential remains available after password change.
+	amReloaded := &AuthManager{sessions: make(map[string]Session), pwFilePath: tmpFile}
+	if err := amReloaded.loadOrCreatePassword(); err != nil || !amReloaded.VerifyPassword("NewSecret123") {
+		t.Errorf("expected changed password to persist across restart: %v", err)
 	}
 }
 
 func TestLoadExistingAndCorruptPasswordFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// 1. Corrupt password file (< 2 parts)
+	// A corrupt password file must fail closed rather than reset to a known password.
 	corruptFile := filepath.Join(tmpDir, "corrupt.txt")
 	_ = os.WriteFile(corruptFile, []byte("only_one_line_without_colon\n"), 0644)
 	amCorrupt := &AuthManager{
 		sessions:   make(map[string]Session),
 		pwFilePath: corruptFile,
 	}
-	if err := amCorrupt.loadOrCreatePassword(); err != nil {
-		t.Fatalf("loadOrCreatePassword on corrupt file failed: %v", err)
+	if err := amCorrupt.loadOrCreatePassword(); err == nil {
+		t.Fatalf("expected corrupt password file to fail closed")
 	}
-	if !amCorrupt.VerifyPassword("Droidspaces") {
-		t.Errorf("expected corrupt file to reset to default password Droidspaces")
+	if amCorrupt.VerifyPassword("Droidspaces") {
+		t.Errorf("corrupt file must not enable the default password")
 	}
 
 	// 2. Load existing valid password file
@@ -155,6 +165,56 @@ func TestLoadExistingAndCorruptPasswordFile(t *testing.T) {
 	}
 	if !am2.VerifyPassword("KeepAcrossRestarts") {
 		t.Errorf("expected existing password KeepAcrossRestarts to verify")
+	}
+}
+
+func TestLegacyPasswordMigratesOnSuccessfulVerification(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "auth")
+	salt := "00112233445566778899aabbccddeeff"
+	legacyHash := legacyHashPassword("old-password", salt)
+	if err := os.WriteFile(tmpFile, []byte(salt+"\n"+legacyHash+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	am := &AuthManager{sessions: make(map[string]Session), pwFilePath: tmpFile}
+	if err := am.loadOrCreatePassword(); err != nil {
+		t.Fatal(err)
+	}
+	if !am.VerifyPassword("old-password") {
+		t.Fatal("legacy password did not verify")
+	}
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(data), passwordHashPrefix+"$") {
+		t.Fatalf("legacy password record was not upgraded: %q", data)
+	}
+	if !am.VerifyPassword("old-password") {
+		t.Fatal("migrated password did not verify")
+	}
+}
+
+func TestPasswordChangePersistenceFailureKeepsOldCredential(t *testing.T) {
+	tmpDir := t.TempDir()
+	file := filepath.Join(tmpDir, "auth")
+	am := &AuthManager{sessions: make(map[string]Session), pwFilePath: file}
+	if err := am.loadOrCreatePassword(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpDir, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := am.ChangePassword("Droidspaces", "replacement-secret"); err == nil {
+		t.Fatal("expected persistence failure")
+	}
+	if !am.VerifyPassword("Droidspaces") || am.VerifyPassword("replacement-secret") {
+		t.Fatal("credential changed despite persistence failure")
 	}
 }
 

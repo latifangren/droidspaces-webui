@@ -3,8 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -83,18 +85,19 @@ func TestRateLimiterWindowExpiry(t *testing.T) {
 }
 
 func TestGetClientIP(t *testing.T) {
-	// 1. From X-Forwarded-For
+	// Forwarding headers from untrusted clients must not change the limiter key.
 	req1 := httptest.NewRequest("GET", "/", nil)
+	req1.RemoteAddr = "192.0.2.10:45678"
 	req1.Header.Set("X-Forwarded-For", "203.0.113.195, 70.41.3.18")
-	if ip := getClientIP(req1); ip != "203.0.113.195" {
-		t.Errorf("expected 203.0.113.195, got %s", ip)
+	if ip := getClientIP(req1); ip != "192.0.2.10" {
+		t.Errorf("expected peer address 192.0.2.10, got %s", ip)
 	}
 
-	// 2. From X-Real-IP
 	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.RemoteAddr = "192.0.2.11:45678"
 	req2.Header.Set("X-Real-IP", "198.51.100.1")
-	if ip := getClientIP(req2); ip != "198.51.100.1" {
-		t.Errorf("expected 198.51.100.1, got %s", ip)
+	if ip := getClientIP(req2); ip != "192.0.2.11" {
+		t.Errorf("expected peer address 192.0.2.11, got %s", ip)
 	}
 
 	// 3. From RemoteAddr host:port
@@ -110,6 +113,59 @@ func TestGetClientIP(t *testing.T) {
 	if ip := getClientIP(req4); ip != "192.168.1.60" {
 		t.Errorf("expected 192.168.1.60, got %s", ip)
 	}
+
+	reqInvalid := httptest.NewRequest("GET", "/", nil)
+	reqInvalid.RemoteAddr = "not-an-ip"
+	reqInvalid.Header.Set("X-Forwarded-For", "203.0.113.9")
+	if ip := getClientIP(reqInvalid); ip != "unknown" {
+		t.Errorf("expected unknown for invalid peer address, got %s", ip)
+	}
+}
+
+func TestGetClientIPUntrustedProxyIgnoresForwardedHeaders(t *testing.T) {
+	resetTrustedProxyForTest()
+	t.Setenv("DSWEB_TRUSTED_PROXY_CIDRS", "")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.10:54321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5, 70.41.3.18")
+	req.Header.Set("X-Real-IP", "203.0.113.5")
+	if ip := getClientIP(req); ip != "198.51.100.10" {
+		t.Errorf("untrusted proxy: expected peer address, got %s", ip)
+	}
+}
+
+func TestGetClientIPHonorsTrustedProxyForwardedChain(t *testing.T) {
+	resetTrustedProxyForTest()
+	t.Setenv("DSWEB_TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
+
+	if !isTrustedProxy(net.ParseIP("10.0.0.5")) {
+		t.Fatalf("test setup: 10.0.0.5 should be in 10.0.0.0/8")
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.5:443"
+	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.6")
+	if ip := getClientIP(req); ip != "203.0.113.5" {
+		t.Errorf("trusted proxy should walk chain to first valid IP, got %s", ip)
+	}
+
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.RemoteAddr = "10.0.0.5:443"
+	req2.Header.Set("X-Real-IP", "203.0.113.7")
+	if ip := getClientIP(req2); ip != "203.0.113.7" {
+		t.Errorf("trusted proxy X-Real-IP fallback failed, got %s", ip)
+	}
+
+	req3 := httptest.NewRequest("GET", "/", nil)
+	req3.RemoteAddr = "10.0.0.5:443"
+	req3.Header.Set("X-Forwarded-For", "not-an-ip")
+	if ip := getClientIP(req3); ip != "10.0.0.5" {
+		t.Errorf("trusted proxy without valid header should fall back to peer, got %s", ip)
+	}
+
+	trustedProxyCIDRs = nil
+	trustedProxyOnce = sync.Once{}
+	t.Setenv("DSWEB_TRUSTED_PROXY_CIDRS", "")
 }
 
 func TestHandleLoginRateLimit(t *testing.T) {

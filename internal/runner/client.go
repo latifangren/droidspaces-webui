@@ -48,7 +48,10 @@ func (c *Client) BinaryPath() string {
 func (c *Client) run(args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	return c.runContext(ctx, args...)
+}
 
+func (c *Client) runContext(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, c.binPath, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -96,7 +99,12 @@ func (c *Client) ListHostNetworkInterfaces() ([]model.NetworkInterfaceInfo, erro
 }
 
 func (c *Client) Show() (*model.ShowResult, error) {
-	out, err := c.run("show", "--format")
+	return c.ShowContext(context.Background())
+}
+
+// ShowContext reads container state while honoring the caller's deadline.
+func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
+	out, err := c.runContext(ctx, "show", "--format")
 	if err != nil {
 		return nil, err
 	}
