@@ -3,6 +3,8 @@ package hardware
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,6 +52,102 @@ type HardwareStats struct {
 	StorageTotalGB  float64 `json:"storage_total_gb"`
 	StorageUsedGB   float64 `json:"storage_used_gb"`
 	StorageUsedPct  float64 `json:"storage_used_pct"`
+}
+
+type HostSystemInfo struct {
+	DeviceModel string `json:"device_model"`
+	Kernel      string `json:"kernel"`
+	Arch        string `json:"arch"`
+	RootType    string `json:"root_type"`
+	SELinux     string `json:"selinux"`
+	Uptime      string `json:"uptime"`
+}
+
+func GetHostSystemInfo() HostSystemInfo {
+	info := HostSystemInfo{
+		Arch: runtime.GOARCH,
+	}
+
+	// 1. Device Model from Android getprop or build.prop
+	if out, err := exec.Command("getprop", "ro.product.model").Output(); err == nil && len(out) > 0 {
+		info.DeviceModel = strings.TrimSpace(string(out))
+	} else if data, err := os.ReadFile("/system/build.prop"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "ro.product.model=") {
+				info.DeviceModel = strings.TrimSpace(strings.TrimPrefix(line, "ro.product.model="))
+				break
+			}
+		}
+	}
+	if info.DeviceModel == "" {
+		info.DeviceModel = runtime.GOOS + " (" + runtime.GOARCH + ")"
+	}
+
+	// 2. Kernel release
+	if data, err := os.ReadFile("/proc/version"); err == nil {
+		parts := strings.Fields(string(data))
+		if len(parts) >= 3 {
+			info.Kernel = parts[2]
+		}
+	}
+	if info.Kernel == "" {
+		if out, err := exec.Command("uname", "-r").Output(); err == nil {
+			info.Kernel = strings.TrimSpace(string(out))
+		}
+	}
+	if info.Kernel == "" {
+		info.Kernel = "Unknown"
+	}
+
+	// 3. Root Subsystem
+	if _, err := os.Stat("/data/adb/ksu"); err == nil {
+		info.RootType = "KernelSU"
+	} else if _, err := os.Stat("/data/adb/ap"); err == nil {
+		info.RootType = "APatch"
+	} else if _, err := os.Stat("/data/adb/magisk"); err == nil {
+		info.RootType = "Magisk"
+	} else if os.Getuid() == 0 {
+		info.RootType = "Root (uid=0)"
+	} else {
+		info.RootType = "Non-root"
+	}
+
+	// 4. SELinux Mode
+	if out, err := exec.Command("getenforce").Output(); err == nil && len(out) > 0 {
+		info.SELinux = strings.TrimSpace(string(out))
+	} else if data, err := os.ReadFile("/sys/fs/selinux/enforce"); err == nil {
+		if strings.TrimSpace(string(data)) == "1" {
+			info.SELinux = "Enforcing"
+		} else {
+			info.SELinux = "Permissive"
+		}
+	} else {
+		info.SELinux = "Disabled"
+	}
+
+	// 5. Uptime
+	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) > 0 {
+			if sec, err := strconv.ParseFloat(fields[0], 64); err == nil {
+				d := int(sec) / 86400
+				h := (int(sec) % 86400) / 3600
+				m := (int(sec) % 3600) / 60
+				if d > 0 {
+					info.Uptime = fmt.Sprintf("%dd %dh %dm", d, h, m)
+				} else if h > 0 {
+					info.Uptime = fmt.Sprintf("%dh %dm", h, m)
+				} else {
+					info.Uptime = fmt.Sprintf("%dm", m)
+				}
+			}
+		}
+	}
+	if info.Uptime == "" {
+		info.Uptime = "Active"
+	}
+
+	return info
 }
 
 func GetStats() HardwareStats {

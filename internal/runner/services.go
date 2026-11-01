@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -401,4 +402,54 @@ func (c *Client) GetServiceJournal(name, service string, lines int) (string, err
 	}
 
 	return c.Exec(name, cmd, "")
+}
+
+// GetSystemdOverride reads the unit's override.conf drop-in, returning content, exists flag, and error.
+func (c *Client) GetSystemdOverride(name, service string) (string, bool, error) {
+	if !safeServiceNameRegex.MatchString(service) {
+		return "", false, fmt.Errorf("invalid service name: %s", service)
+	}
+	overridePath := fmt.Sprintf("/etc/systemd/system/%s.d/override.conf", service)
+	checkCmd := fmt.Sprintf("[ -f %s ] && echo '__EXISTS__' && cat %s", overridePath, overridePath)
+	out, err := c.Exec(name, checkCmd, "")
+	if err != nil {
+		return "", false, err
+	}
+	if strings.HasPrefix(out, "__EXISTS__\n") {
+		content := strings.TrimPrefix(out, "__EXISTS__\n")
+		return content, true, nil
+	}
+	// Return boilerplate template if override does not exist yet
+	return "[Service]\n", false, nil
+}
+
+// SetSystemdOverride atomically writes override.conf via base64 stream and runs systemctl daemon-reload.
+func (c *Client) SetSystemdOverride(name, service, content string) error {
+	if !safeServiceNameRegex.MatchString(service) {
+		return fmt.Errorf("invalid service name: %s", service)
+	}
+	dirPath := fmt.Sprintf("/etc/systemd/system/%s.d", service)
+	overridePath := fmt.Sprintf("%s/override.conf", dirPath)
+	b64 := base64.StdEncoding.EncodeToString([]byte(content))
+	writeCmd := fmt.Sprintf("mkdir -p %s && echo '%s' | base64 -d > %s && systemctl daemon-reload 2>&1", dirPath, b64, overridePath)
+	out, err := c.Exec(name, writeCmd, "")
+	if err != nil {
+		return fmt.Errorf("failed to save override and reload systemd: %s (%w)", out, err)
+	}
+	return nil
+}
+
+// DeleteSystemdOverride removes override.conf and its directory, then executes systemctl daemon-reload.
+func (c *Client) DeleteSystemdOverride(name, service string) error {
+	if !safeServiceNameRegex.MatchString(service) {
+		return fmt.Errorf("invalid service name: %s", service)
+	}
+	dirPath := fmt.Sprintf("/etc/systemd/system/%s.d", service)
+	overridePath := fmt.Sprintf("%s/override.conf", dirPath)
+	delCmd := fmt.Sprintf("rm -f %s && rmdir --ignore-fail-on-non-empty %s 2>/dev/null; systemctl daemon-reload 2>&1", overridePath, dirPath)
+	out, err := c.Exec(name, delCmd, "")
+	if err != nil {
+		return fmt.Errorf("failed to delete override and reload systemd: %s (%w)", out, err)
+	}
+	return nil
 }

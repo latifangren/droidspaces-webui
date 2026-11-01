@@ -207,3 +207,62 @@ func TestCPUSamplerFull(t *testing.T) {
 	_ = GetContainerCPU("test-box", 100)
 	_ = GetContainerCPU("unknown", 0)
 }
+
+func TestStorageProbeAndBlankImage(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 1. Probe storage on tmpDir
+	target := ProbeStorage(tmpDir)
+	if target.Path == "" {
+		t.Errorf("expected non-empty path in probe result")
+	}
+
+	// 2. Classify mount unit tests
+	supFull, _ := classifyMount("ext4", map[string]bool{"rw": true})
+	if supFull != StorageSupportFull {
+		t.Errorf("expected FULL for ext4, got %s", supFull)
+	}
+
+	supExfat, _ := classifyMount("exfat", map[string]bool{"rw": true})
+	if supExfat != StorageSupportImageOnly {
+		t.Errorf("expected IMAGE_ONLY for exfat, got %s", supExfat)
+	}
+
+	supFat, _ := classifyMount("vfat", map[string]bool{"rw": true})
+	if supFat != StorageSupportUnusable {
+		t.Errorf("expected UNUSABLE for vfat, got %s", supFat)
+	}
+
+	supTmpfs, _ := classifyMount("tmpfs", map[string]bool{"rw": true})
+	if supTmpfs != StorageSupportUnusable {
+		t.Errorf("expected UNUSABLE for tmpfs, got %s", supTmpfs)
+	}
+
+	supNoexec, _ := classifyMount("f2fs", map[string]bool{"noexec": true})
+	if supNoexec != StorageSupportImageOnly {
+		t.Errorf("expected IMAGE_ONLY for noexec, got %s", supNoexec)
+	}
+
+	// 3. Unescape octal
+	if res := unescapeOctal(`foo\040bar\011baz`); res != "foo bar\tbaz" {
+		t.Errorf("unexpected unescape result: %s", res)
+	}
+
+	// 4. Create blank sparse image
+	imgPath := filepath.Join(tmpDir, "test.img")
+	if err := CreateBlankSparseImage(imgPath, 4); err != nil {
+		t.Fatalf("create sparse image failed: %v", err)
+	}
+	stat, err := os.Stat(imgPath)
+	if err != nil {
+		t.Fatalf("stat image failed: %v", err)
+	}
+	if stat.Size() != 4*1024*1024*1024 {
+		t.Errorf("expected 4GB size, got %d", stat.Size())
+	}
+
+	// Duplicate create should fail
+	if err := CreateBlankSparseImage(imgPath, 4); err == nil {
+		t.Errorf("expected error for duplicate image create")
+	}
+}

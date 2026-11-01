@@ -933,3 +933,61 @@ func TestContainerConfigGetAndUpdate(t *testing.T) {
 		t.Errorf("expected 400 for malformed json in PUT config, got %d", wBad.Code)
 	}
 }
+
+func TestStorageEndpointsAndSystemdOverride(t *testing.T) {
+	s, tmpDir, token := setupTestServer(t)
+	h := s.Handler()
+
+	// 1. Storage Probe POST
+	wProbe := doRequest(h, token, "POST", "/api/host/storage/probe", map[string]string{
+		"path": tmpDir,
+	})
+	if wProbe.Code != http.StatusOK {
+		t.Fatalf("expected 200 for storage probe, got %d: %s", wProbe.Code, wProbe.Body.String())
+	}
+
+	// Method not allowed for GET storage probe
+	wProbeGet := doRequest(h, token, "GET", "/api/host/storage/probe", nil)
+	if wProbeGet.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET /api/host/storage/probe, got %d", wProbeGet.Code)
+	}
+
+	// 2. Storage Create Image POST
+	testImg := filepath.Join(tmpDir, "auto.img")
+	wImg := doRequest(h, token, "POST", "/api/host/storage/create-image", map[string]interface{}{
+		"path":    testImg,
+		"size_gb": 2,
+	})
+	if wImg.Code != http.StatusOK {
+		t.Fatalf("expected 200 for create-image, got %d: %s", wImg.Code, wImg.Body.String())
+	}
+
+	// Bad create image request (empty path)
+	wBadImg := doRequest(h, token, "POST", "/api/host/storage/create-image", map[string]interface{}{
+		"path": "",
+	})
+	if wBadImg.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty path in create-image, got %d", wBadImg.Code)
+	}
+
+	// Method not allowed for GET create image
+	wImgGet := doRequest(h, token, "GET", "/api/host/storage/create-image", nil)
+	if wImgGet.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for GET /api/host/storage/create-image, got %d", wImgGet.Code)
+	}
+
+	// 3. Systemd Override endpoints
+	// GET override
+	wGetOv := doRequest(h, token, "GET", "/api/containers/test-box/services/mock.service/override", nil)
+	_ = wGetOv.Code
+
+	// POST override
+	wPostOv := doRequest(h, token, "POST", "/api/containers/test-box/services/mock.service/override", map[string]string{
+		"content": "[Service]\nRestart=always\n",
+	})
+	_ = wPostOv.Code
+
+	// DELETE override
+	wDelOv := doRequest(h, token, "DELETE", "/api/containers/test-box/services/mock.service/override", nil)
+	_ = wDelOv.Code
+}

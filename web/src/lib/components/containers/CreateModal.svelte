@@ -14,6 +14,8 @@
     Wifi,
     Sliders,
     RotateCcw,
+    Plus,
+    AlertTriangle,
   } from 'lucide-svelte';
 
   export let show: boolean = false;
@@ -65,6 +67,93 @@
   let customInit = '';
   let envVars = '';
   let showAdvanced = false;
+
+  let storageProbe: any = null;
+  let isProbingStorage = false;
+  let showImageCreator = false;
+  let newImgName = '';
+  let newImgSizeGB = 8;
+  let isCreatingImage = false;
+  let imageCreateError = '';
+  let probeDebounceTimer: any = null;
+
+  function getAuthHeaders(): Record<string, string> {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('ds_token') : null;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    return headers;
+  }
+
+  async function probePath(path: string) {
+    if (!path || !path.trim()) {
+      storageProbe = null;
+      return;
+    }
+    isProbingStorage = true;
+    try {
+      const res = await fetch('/api/host/storage/probe', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ path: path.trim() }),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && body.data) {
+          storageProbe = body.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Storage probe failed:', e);
+    } finally {
+      isProbingStorage = false;
+    }
+  }
+
+  function handlePathChange(p: string) {
+    if (probeDebounceTimer) clearTimeout(probeDebounceTimer);
+    probeDebounceTimer = setTimeout(() => {
+      probePath(p);
+    }, 350);
+  }
+
+  async function handleCreateSparseImage() {
+    if (!newImgName.trim()) {
+      imageCreateError = 'Image filename is required';
+      return;
+    }
+    let filename = newImgName.trim();
+    if (!filename.endsWith('.img')) filename += '.img';
+    const targetPath = `/data/local/Droidspaces/rootfs/${filename}`;
+
+    isCreatingImage = true;
+    imageCreateError = '';
+    try {
+      const res = await fetch('/api/host/storage/create-image', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          path: targetPath,
+          size_gb: Number(newImgSizeGB) || 8,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        imageCreateError = data.error || 'Failed to create sparse image';
+        return;
+      }
+      rootfsImg = targetPath;
+      rootfs = '';
+      showImageCreator = false;
+      handlePathChange(targetPath);
+      if (onRefreshTemplates) {
+        await onRefreshTemplates();
+      }
+    } catch (e: any) {
+      imageCreateError = e.message || 'Network error creating image';
+    } finally {
+      isCreatingImage = false;
+    }
+  }
 
   const ramOptions = [
     { label: 'Unlimited (Host RAM)', value: '' },
@@ -189,6 +278,10 @@
     hostname = '';
     rootfs = '';
     rootfsImg = '';
+    storageProbe = null;
+    showImageCreator = false;
+    newImgName = '';
+    imageCreateError = '';
     net = 'nat';
     gateway = '';
     gatewaySelect = '';
@@ -275,6 +368,7 @@
         rootfs = tpl.local_path;
         rootfsImg = '';
       }
+      handlePathChange(tpl.local_path);
 
       const base = (tpl.distro || distroId.replace(/^(local-|img-)/, '').split('-')[0]).toLowerCase();
 
@@ -522,22 +616,166 @@
                   id="create-rootfs-dir-input"
                   type="text"
                   bind:value={rootfs}
-                  on:input={() => { if (rootfs) rootfsImg = ''; }}
+                  on:input={() => {
+                    if (rootfs) {
+                      rootfsImg = '';
+                      handlePathChange(rootfs);
+                    }
+                  }}
                   placeholder="/data/local/Droidspaces/rootfs/alpine"
                   class="input-brutal w-full font-mono text-[11px]"
                 />
               </div>
               <div>
-                <label for="create-rootfs-img-input" class="label-brutal">RootFS Image (.img) Path</label>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="create-rootfs-img-input" class="label-brutal !mb-0">RootFS Image (.img) Path</label>
+                  <button
+                    type="button"
+                    on:click={() => {
+                      newImgName = (name || 'rootfs') + '.img';
+                      showImageCreator = !showImageCreator;
+                    }}
+                    class="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={10} />
+                    <span>{showImageCreator ? 'Cancel' : '+ New Blank Image'}</span>
+                  </button>
+                </div>
                 <input
                   id="create-rootfs-img-input"
                   type="text"
                   bind:value={rootfsImg}
-                  on:input={() => { if (rootfsImg) rootfs = ''; }}
+                  on:input={() => {
+                    if (rootfsImg) {
+                      rootfs = '';
+                      handlePathChange(rootfsImg);
+                    }
+                  }}
                   placeholder="/data/local/Droidspaces/rootfs/ubuntu.img"
                   class="input-brutal w-full font-mono text-[11px]"
                 />
               </div>
+            </div>
+
+            {#if showImageCreator}
+              <div class="p-3 rounded-lg border-2 border-primary bg-panel-alt space-y-2.5 mt-2 shadow-brutal-sm">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-ink flex items-center gap-1.5">
+                    <HardDrive size={13} class="text-primary" />
+                    Create Blank Sparse ext4 Image
+                  </span>
+                  <span class="text-[10px] text-muted font-mono truncate max-w-[200px]">/data/local/Droidspaces/rootfs/</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div class="sm:col-span-2">
+                    <input
+                      type="text"
+                      bind:value={newImgName}
+                      placeholder="e.g. debian.img"
+                      class="input-brutal w-full font-mono text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <select bind:value={newImgSizeGB} class="input-brutal w-full font-mono text-[11px]">
+                      <option value={4}>4 GB</option>
+                      <option value={8}>8 GB (Standard)</option>
+                      <option value={16}>16 GB</option>
+                      <option value={32}>32 GB</option>
+                      <option value={64}>64 GB</option>
+                    </select>
+                  </div>
+                </div>
+                {#if imageCreateError}
+                  <p class="text-[10px] text-accent font-mono">{imageCreateError}</p>
+                {/if}
+                <div class="flex justify-end gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    on:click={() => (showImageCreator = false)}
+                    class="btn-brutal !py-1 !px-2.5 text-[11px] bg-panel text-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    on:click={handleCreateSparseImage}
+                    disabled={isCreatingImage}
+                    class="btn-brutal !py-1 !px-3 text-[11px] bg-primary text-bg font-bold flex items-center gap-1.5"
+                  >
+                    {#if isCreatingImage}
+                      <RotateCcw size={11} class="animate-spin" />
+                      <span>Creating...</span>
+                    {:else}
+                      <HardDrive size={11} />
+                      <span>Create Sparse ext4 ({newImgSizeGB}GB)</span>
+                    {/if}
+                  </button>
+                </div>
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Storage Target Filesystem Diagnostic Badge -->
+          {#if isProbingStorage}
+            <div class="p-2 rounded-lg border border-line bg-panel/30 font-mono text-[10px] text-muted flex items-center gap-2">
+              <RotateCcw size={11} class="animate-spin text-primary" />
+              <span>Checking storage filesystem compatibility...</span>
+            </div>
+          {:else if storageProbe}
+            <div class="p-2.5 rounded-lg border font-mono text-[11px] flex items-start gap-2.5 {
+              storageProbe.support === 'FULL' ? 'border-lime/40 bg-lime/10 text-ink' :
+              storageProbe.support === 'IMAGE_ONLY' ? 'border-amber-400/40 bg-amber-400/10 text-ink' :
+              'border-accent/40 bg-accent/10 text-accent'
+            }">
+              {#if storageProbe.support === 'FULL'}
+                <div class="w-2.5 h-2.5 rounded-full bg-lime shrink-0 mt-0.5"></div>
+                <div class="space-y-0.5 flex-1 min-w-0">
+                  <div class="font-bold flex items-center justify-between gap-2">
+                    <span class="truncate">FS: {storageProbe.fs_type.toUpperCase()} ({storageProbe.mount_point})</span>
+                    <span class="text-lime text-[10px] uppercase font-bold shrink-0">Full Support (DIR & IMG)</span>
+                  </div>
+                  <p class="text-[10px] text-muted">
+                    {storageProbe.free_gb.toFixed(1)} GB free of {storageProbe.total_gb.toFixed(1)} GB. Full POSIX filesystem permissions enabled.
+                  </p>
+                </div>
+              {:else if storageProbe.support === 'IMAGE_ONLY'}
+                <div class="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 mt-0.5"></div>
+                <div class="space-y-0.5 flex-1 min-w-0">
+                  <div class="font-bold flex items-center justify-between gap-2">
+                    <span class="text-amber-400 truncate">FS: {storageProbe.fs_type.toUpperCase()} ({storageProbe.mount_point})</span>
+                    <span class="text-amber-400 text-[10px] uppercase font-bold shrink-0">Sparse (.img) Required</span>
+                  </div>
+                  <p class="text-[10px] text-muted">
+                    {storageProbe.free_gb.toFixed(1)} GB free. {storageProbe.reason || 'Volume requires a sparse disk image.'}
+                  </p>
+                  {#if rootfs && !rootfsImg}
+                    <div class="pt-1.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        on:click={() => {
+                          newImgName = (name || 'container') + '.img';
+                          showManualPaths = true;
+                          showImageCreator = true;
+                        }}
+                        class="btn-brutal !py-0.5 !px-2 text-[10px] bg-amber-400 text-bg font-bold"
+                      >
+                        Create .img for this target
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {:else}
+                <div class="w-2.5 h-2.5 rounded-full bg-accent shrink-0 mt-0.5"></div>
+                <div class="space-y-0.5 flex-1 min-w-0">
+                  <div class="font-bold text-accent flex items-center justify-between gap-2">
+                    <span class="truncate">Storage Incompatible: {storageProbe.fs_type.toUpperCase()}</span>
+                    <span class="text-[10px] uppercase font-bold shrink-0">Unusable</span>
+                  </div>
+                  <p class="text-[10px] text-accent/80">
+                    {storageProbe.reason}
+                  </p>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>

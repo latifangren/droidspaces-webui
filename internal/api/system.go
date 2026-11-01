@@ -33,6 +33,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"port":             s.GetPort(),
 		"daemon_active":    true,
 		"hardware":         hw,
+		"host_info":        hardware.GetHostSystemInfo(),
 	}, "")
 }
 
@@ -61,6 +62,52 @@ func (s *Server) handleHostExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sendJSON(w, http.StatusOK, model.ExecResponse{Output: out, ExitCode: 0}, "")
+}
+
+func (s *Server) handleStorageProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	target := hardware.ProbeStorage(req.Path)
+	s.sendJSON(w, http.StatusOK, target, "")
+}
+
+func (s *Server) handleStorageCreateImage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+		return
+	}
+	var req struct {
+		Path   string `json:"path"`
+		SizeGB int    `json:"size_gb"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendJSON(w, http.StatusBadRequest, nil, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Path) == "" {
+		s.sendJSON(w, http.StatusBadRequest, nil, "destination path is required")
+		return
+	}
+	if req.SizeGB < 1 || req.SizeGB > 512 {
+		req.SizeGB = 8
+	}
+
+	if err := hardware.CreateBlankSparseImage(req.Path, req.SizeGB); err != nil {
+		s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+		return
+	}
+
+	s.sendJSON(w, http.StatusOK, map[string]interface{}{
+		"path":    req.Path,
+		"size_gb": req.SizeGB,
+		"message": "sparse image created successfully",
+	}, "")
 }
 
 func (s *Server) handleCheck(w http.ResponseWriter, r *http.Request) {

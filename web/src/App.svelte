@@ -10,6 +10,7 @@
   import Terminal from './lib/pages/Terminal.svelte';
   import Templates from './lib/pages/Templates.svelte';
   import Settings from './lib/pages/Settings.svelte';
+  import About from './lib/pages/About.svelte';
   import LoginPage from './lib/pages/LoginPage.svelte';
   import ToastContainer from './lib/components/common/ToastContainer.svelte';
 
@@ -204,6 +205,8 @@
         <Templates onNavigate={navigate} {containersData} />
       {:else if currentRoute === 'settings'}
         <Settings {statusData} onRefresh={loadData} {colorPalette} onSetColor={setColor} />
+      {:else if currentRoute === 'about'}
+        <About {statusData} />
       {/if}
 
       <!-- Persistent Terminal DOM & WebSocket: Preserved across routes to prevent disconnects -->

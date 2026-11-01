@@ -6,6 +6,7 @@
     Terminal,
     DownloadCloud,
     Settings,
+    Info,
     ChevronLeft,
     ChevronRight,
     Activity,
@@ -23,6 +24,7 @@
     { id: 'terminal', label: 'Terminal', icon: Terminal },
     { id: 'templates', label: 'RootFS Store', icon: DownloadCloud },
     { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'about', label: 'About', icon: Info },
   ];
 </script>
 

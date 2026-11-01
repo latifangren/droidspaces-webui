@@ -110,6 +110,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/host/exec", s.handleHostExec)
 	s.mux.HandleFunc("/api/boot-priority", s.handleBootPriority)
 	s.mux.HandleFunc("/api/host/interfaces", s.handleHostInterfaces)
+	s.mux.HandleFunc("/api/host/storage/probe", s.handleStorageProbe)
+	s.mux.HandleFunc("/api/host/storage/create-image", s.handleStorageCreateImage)
 	s.mux.HandleFunc("/api/check", s.handleCheck)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/settings", s.handleSettings)

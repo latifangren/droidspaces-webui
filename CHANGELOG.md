@@ -16,6 +16,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Target: ARM64 (`aarch64`), statically linked with Musl C libc.
 
 ### Added
+- **Dedicated About Page & System Diagnostics (`About.svelte`)**:
+  - Added new navigation route `About` in desktop sidebar (`AppSidebar.svelte`) and mobile navigation (`FloatingDock.svelte`).
+  - Displays component version matrix (WebUI `v7.1.0`, Core C Musl `v7.1.0` @ `4344dc5`, Module `v7.1.0 (7100)`).
+  - Shows live Android host telemetry (Device Model, Linux Kernel, Root Manager `KernelSU`/`Magisk`, SELinux status, and System Uptime).
+  - Consolidated **Kernel Diagnostics & Capabilities (34 Probes)** from Settings into About page, centralizing all hardware and kernel health checks in one place.
+  - Implemented robust clipboard copy helper with `document.execCommand('copy')` fallback for plain HTTP Wi-Fi access where `navigator.clipboard` is restricted by browsers.
+  - Added one-click **Copy Diagnostics Report** button formatting full system specs and kernel diagnostics into Markdown for debugging.
+  - Added storage topology reference paths and quick CLI/ADB command cheatsheet.
+  - Added open-source credits and toggleable GNU General Public License v3.0 (GPLv3) viewer.
+- **GNU General Public License v3.0 (GPLv3)**:
+  - Added project [LICENSE](LICENSE) adhering to upstream Droidspaces-OSS licensing terms.
+- **Storage Target Filesystem Probe & Compatibility Analysis**:
+  - Added REST endpoint `POST /api/host/storage/probe` analyzing mount points (`/proc/mounts`) with longest-prefix matching.
+  - Automatically identifies filesystem capability tiers: `FULL` (ext4/btrfs), `IMAGE_ONLY` (f2fs/exfat/noexec), and `UNUSABLE` (tmpfs/virtual/read-only).
+  - Displays live Neo-Brutalist diagnostic badge in `CreateModal.svelte` with free space telemetry and safety guidance.
+- **Blank Sparse ext4 Disk Image Creator**:
+  - Added REST endpoint `POST /api/host/storage/create-image` creating sparse `.img` files via `truncate` and `mkfs.ext4` / `mke2fs`.
+  - Added "+ New Blank Image" inline generator in `CreateModal.svelte` (4GB, 8GB, 16GB, 32GB, 64GB presets) for instant creation on restricted Android filesystems.
+- **Systemd Unit Drop-in Override Editor (`override.conf`)**:
+  - Added REST endpoints `GET`, `POST`, and `DELETE` for `/api/containers/{name}/services/{service}/override`.
+  - Implemented base64 streaming for atomic writes to `/etc/systemd/system/<service>.d/override.conf` and automatic `systemctl daemon-reload`.
+  - Added dedicated code editor in `ServicesTab.svelte` with quick-insert presets (`Restart=always`, `Environment`, `Reset ExecStart`, `MemoryMax`).
 - **Interactive Container Configuration Editing**:
   - Added REST API endpoints `GET /api/containers/{name}/config` and `PUT /api/containers/{name}/config` for structured inspection and updating of container settings.
   - Implemented `GetContainerConfigDetails` and `UpdateContainerConfig` with atomic persistence, automatic `container.env` syncing, and cache invalidation.
