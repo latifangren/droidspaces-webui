@@ -17,6 +17,8 @@
     AlertTriangle,
     X,
     Code,
+    Smartphone,
+    ExternalLink,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
@@ -99,6 +101,20 @@
       ports: '8088:80',
       distroReq: 'openwrt-23.05',
       command: 'opkg update && opkg install luci wireguard-tools',
+    },
+    {
+      id: 'android-bridge-companion',
+      name: 'Android Host Bridge (ADB-Style Control)',
+      category: 'Hardware Integration',
+      targetEnv: 'Host Integration',
+      icon: Smartphone,
+      color: 'bg-amber-400 text-black',
+      desc: 'Allows root inside the container to execute host Android commands (dumpsys battery, reboot, pm, am) like ADB shell without USB or wireless ADB. Requires flashing the android-bridge Magisk/KernelSU module and bind-mounting /dev/android-bridge:/run/android-bridge:ro.',
+      ram: '128 MB',
+      ports: 'UNIX Socket (/dev/android-bridge)',
+      distroReq: 'debian-12',
+      command: 'echo "Mount -b /dev/android-bridge:/run/android-bridge:ro then run: android-bridge dumpsys battery"',
+      externalUrl: 'https://github.com/ravindu644/android-bridge',
     },
   ];
 
@@ -242,6 +258,7 @@
       memory: ramDigits ? `${ramDigits}M` : '',
       ports: portsVal,
       allow_sandboxing: bp.id.includes('docker'),
+      custom_binds: bp.id.includes('android-bridge') ? '/dev/android-bridge:/run/android-bridge:ro' : undefined,
     });
   }
 
@@ -646,13 +663,27 @@
 
           <div class="pt-3 border-t-2 border-line flex items-center justify-between">
             <span class="text-[11px] text-muted font-mono font-bold">Port: {bp.ports}</span>
-            <button
-              on:click={() => launchBlueprint(bp)}
-              class="btn-brutal btn-brutal-primary !py-1.5 !px-3"
-            >
-              <span>Deploy</span>
-              <Play size={12} />
-            </button>
+            <div class="flex items-center gap-2">
+              {#if bp.externalUrl}
+                <a
+                  href={bp.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn-brutal !py-1.5 !px-2.5 text-xs inline-flex items-center gap-1 font-bold"
+                  title="View GitHub Documentation"
+                >
+                  <ExternalLink size={12} />
+                  <span>Module</span>
+                </a>
+              {/if}
+              <button
+                on:click={() => launchBlueprint(bp)}
+                class="btn-brutal btn-brutal-primary !py-1.5 !px-3"
+              >
+                <span>Deploy</span>
+                <Play size={12} />
+              </button>
+            </div>
           </div>
         </div>
       {/each}

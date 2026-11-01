@@ -64,6 +64,10 @@ Turn any modern Android phone (RAM $\ge$ 6 GB) into an energy-efficient, headles
 ### 9. Real-Time Hardware Telemetry
 - **Battery & Thermal Monitoring**: Polling directly from `/sys/class/power_supply/battery/` (capacity, charge status, temperature) and `/sys/devices/virtual/thermal/`.
 - **Host Resource Usage**: Direct kernel metrics for CPU load averages, RAM allocation, and `/data` storage availability.
+
+### 10. Android Host Hardware Bridge (Companion Ecosystem)
+- **Host Integration via [android-bridge](https://github.com/ravindu644/android-bridge)**: Companion Magisk/KernelSU/APatch module by [ravindu644](https://github.com/ravindu644) that enables root inside a Droidspaces container to execute host Android commands directly like an interactive `adb shell` without USB cables or wireless ADB (e.g., `android-bridge reboot`, `dumpsys battery`, `pm list packages`, `am broadcast`).
+- **WebUI Blueprint Integration**: The *Blueprints* tab includes a pre-configured template that automatically wires the `/dev/android-bridge:/run/android-bridge:ro` read-only socket mount into the container configuration.
 ---
 
 ## Documentation & Comprehensive Guides
