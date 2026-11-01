@@ -29,7 +29,84 @@ func TestMain(m *testing.M) {
 		mockExe += ".exe"
 	}
 
-	mockCode := "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n)\n\nfunc main() {\n\tallArgs := strings.Join(os.Args[1:], \" \")\n\n\tif strings.Contains(allArgs, \"fail-box\") || strings.Contains(allArgs, \"--fail\") {\n\t\tfmt.Fprintln(os.Stderr, \"command failed: simulated error\")\n\t\tos.Exit(1)\n\t}\n\n\tswitch {\n\tcase strings.HasPrefix(allArgs, \"show\"):\n\t\tfmt.Println(`{\"running\":[{\"name\":\"box-alpha\",\"pid\":100,\"ip\":\"172.28.1.5\"}],\"stopped\":[{\"name\":\"box-beta\"}]}`)\n\tcase strings.HasPrefix(allArgs, \"info\"):\n\t\tif strings.Contains(allArgs, \"bad-json\") {\n\t\t\tfmt.Println(`{invalid json`)\n\t\t} else {\n\t\t\tfmt.Println(`{\"name\":\"box-alpha\",\"status\":\"running\",\"pid\":100,\"ip\":\"172.28.1.5\"}`)\n\t\t}\n\tcase strings.HasPrefix(allArgs, \"check\"):\n\t\tfmt.Println(\"Environment check: OK\")\n\tcase strings.HasPrefix(allArgs, \"scan\"):\n\t\tfmt.Println(\"Containers found: box-alpha, box-beta\")\n\tcase strings.Contains(allArgs, \"run\"):\n\t\tswitch {\n\t\tcase strings.Contains(allArgs, \"box-psaux\"):\n\t\t\tfmt.Println(\"USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND\")\n\t\t\tfmt.Println(\"root 200 0.5 0.2 1234 567 ? S 00:00 0:01 /usr/bin/daemon\")\n\t\tcase strings.Contains(allArgs, \"ps\"):\n\t\t\tfmt.Println(\"PID USER %CPU %MEM COMMAND\")\n\t\t\tfmt.Println(\"1 root 0.0 0.1 /sbin/init\")\n\t\tcase strings.Contains(allArgs, \"/etc/passwd\"):\n\t\t\tfmt.Println(\"root\")\n\t\t\tfmt.Println(\"app\")\n\t\tcase strings.Contains(allArgs, \"systemctl list-unit-files\"):\n\t\t\tfmt.Println(\"ssh.service enabled\")\n\t\t\tfmt.Println(\"cron.service disabled\")\n\t\tcase strings.Contains(allArgs, \"systemctl list-units\"):\n\t\t\tfmt.Println(\"ssh.service loaded active running OpenSSH server\")\n\t\t\tfmt.Println(\"cron.service loaded inactive dead Cron daemon\")\n\t\tcase strings.Contains(allArgs, \"rc-update\"):\n\t\t\tfmt.Println(\"ssh | default\")\n\t\tcase strings.Contains(allArgs, \"rc-status\"):\n\t\t\tfmt.Println(\"Runlevel: default\")\n\t\t\tfmt.Println(\" ssh [ started ]\")\n\t\t\tfmt.Println(\" cron [ stopped ]\")\n\t\tcase strings.Contains(allArgs, \"find /etc/init.d\"):\n\t\t\tfmt.Println(\"/etc/init.d/ssh\")\n\t\t\tfmt.Println(\"/etc/init.d/cron\")\n\t\tcase strings.Contains(allArgs, \"journalctl\"):\n\t\t\tfmt.Println(\"Jan 01 00:00:00 host systemd[1]: Starting service...\")\n\t\tcase strings.Contains(allArgs, \"service --status-all\"):\n\t\t\tfmt.Println(\" [ + ] ssh\")\n\t\t\tfmt.Println(\" [ - ] cron\")\n\t\tcase strings.Contains(allArgs, \"cat /etc/os-release\"):\n\t\t\tfmt.Println(\"ID=debian\")\n\t\tdefault:\n\t\t\tfmt.Println(\"mock exec output ok\")\n\t\t}\n\tdefault:\n\t\tfmt.Println(\"success\")\n\t}\n}\n"
+	mockCode := `package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	allArgs := strings.Join(os.Args[1:], " ")
+
+	if strings.Contains(allArgs, "fail-box") || strings.Contains(allArgs, "--fail") {
+		fmt.Fprintln(os.Stderr, "command failed: simulated error")
+		os.Exit(1)
+	}
+
+	switch {
+	case strings.HasPrefix(allArgs, "show"):
+		fmt.Println(` + "`" + `{"running":[{"name":"box-alpha","pid":100,"ip":"172.28.1.5","swap_allowed":1}],"stopped":[{"name":"box-beta"}]}` + "`" + `)
+	case strings.HasPrefix(allArgs, "info"):
+		if strings.Contains(allArgs, "bad-json") {
+			fmt.Println(` + "`" + `{invalid json` + "`" + `)
+		} else {
+			fmt.Println(` + "`" + `{"name":"box-alpha","status":"running","pid":100,"ip":"172.28.1.5","swap_allowed":1}` + "`" + `)
+		}
+	case strings.HasPrefix(allArgs, "check"):
+		if strings.Contains(allArgs, "--json") || strings.Contains(allArgs, "--format") {
+			fmt.Println(` + "`" + `{"root":1,"kernel_version":1,"swap_limit":1,"mount_api":1}` + "`" + `)
+		} else {
+			fmt.Println("Environment check: OK")
+		}
+	case strings.HasPrefix(allArgs, "scan"):
+		fmt.Println("Containers found: box-alpha, box-beta")
+	case strings.Contains(allArgs, "run"):
+		switch {
+		case strings.Contains(allArgs, "box-psaux"):
+			fmt.Println("USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND")
+			fmt.Println("root 200 0.5 0.2 1234 567 ? S 00:00 0:01 /usr/bin/daemon")
+		case strings.Contains(allArgs, "ps"):
+			fmt.Println("PID USER %CPU %MEM COMMAND")
+			fmt.Println("1 root 0.0 0.1 /sbin/init")
+		case strings.Contains(allArgs, "/etc/passwd"):
+			fmt.Println("root")
+			fmt.Println("app")
+		case strings.Contains(allArgs, "/var/service") || strings.Contains(allArgs, "/run/runit") || strings.Contains(allArgs, "/etc/sv"):
+			fmt.Println("SVC|sshd|running|enabled|run: sshd: (pid 42) 10s")
+			fmt.Println("SVC|cron|inactive|disabled|down: cron: 0s")
+			fmt.Println("INSTALLED|ntpd")
+		case strings.Contains(allArgs, "systemctl list-unit-files"):
+			fmt.Println("ssh.service enabled")
+			fmt.Println("cron.service disabled")
+		case strings.Contains(allArgs, "systemctl list-units"):
+			fmt.Println("ssh.service loaded active running OpenSSH server")
+			fmt.Println("cron.service loaded inactive dead Cron daemon")
+		case strings.Contains(allArgs, "rc-update"):
+			fmt.Println("ssh | default")
+		case strings.Contains(allArgs, "rc-status"):
+			fmt.Println("Runlevel: default")
+			fmt.Println(" ssh [ started ]")
+			fmt.Println(" cron [ stopped ]")
+		case strings.Contains(allArgs, "find /etc/init.d"):
+			fmt.Println("/etc/init.d/ssh")
+			fmt.Println("/etc/init.d/cron")
+		case strings.Contains(allArgs, "journalctl"):
+			fmt.Println("Jan 01 00:00:00 host systemd[1]: Starting service...")
+		case strings.Contains(allArgs, "service --status-all"):
+			fmt.Println(" [ + ] ssh")
+			fmt.Println(" [ - ] cron")
+		case strings.Contains(allArgs, "cat /etc/os-release"):
+			fmt.Println("ID=debian")
+		default:
+			fmt.Println("mock exec output ok")
+		}
+	default:
+		fmt.Println("success")
+	}
+}
+`
 
 	if err := os.WriteFile(mockSrc, []byte(mockCode), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write mock code: %v\n", err)
@@ -302,6 +379,39 @@ func TestCleanupAndInitVariants(t *testing.T) {
 		t.Fatalf("GetServiceJournal for openrc failed: %v", err)
 	}
 	_ = logs
+
+	// Test static inspection and service management of runit container
+	runitBox := filepath.Join(tmpDir, "runit-box")
+	_ = os.MkdirAll(filepath.Join(runitBox, "rootfs", "etc", "runit"), 0755)
+	_ = os.WriteFile(filepath.Join(runitBox, "container.config"), []byte("name=runit-box\nallow_swap=1\nrootfs_path="+filepath.Join(runitBox, "rootfs")+"\n"), 0644)
+	initSysRunit := c.DetectInitSystem("runit-box")
+	if initSysRunit != "runit" {
+		t.Errorf("expected runit, got %s", initSysRunit)
+	}
+	rSvcs, rSys, err := c.ListServices("runit-box")
+	if err != nil || rSys != "runit" || len(rSvcs) < 2 {
+		t.Fatalf("ListServices for runit failed: err=%v, sys=%s, svcs=%+v", err, rSys, rSvcs)
+	}
+	if err := c.ManageService("runit-box", "start", "sshd"); err != nil {
+		t.Errorf("ManageService runit start failed: %v", err)
+	}
+	if err := c.ManageService("runit-box", "enable", "ntpd"); err != nil {
+		t.Errorf("ManageService runit enable failed: %v", err)
+	}
+	rLogs, err := c.GetServiceJournal("runit-box", "sshd", 20)
+	if err != nil {
+		t.Errorf("GetServiceJournal for runit failed: %v", err)
+	}
+	_ = rLogs
+
+	// CheckFormat verification
+	chkMap, err := c.CheckFormat()
+	if err != nil {
+		t.Fatalf("CheckFormat failed: %v", err)
+	}
+	if chkMap["swap_limit"] != float64(1) && chkMap["swap_limit"] != 1 {
+		t.Errorf("expected swap_limit in CheckFormat, got %v", chkMap["swap_limit"])
+	}
 }
 
 func TestCloneValidationsAndExecution(t *testing.T) {

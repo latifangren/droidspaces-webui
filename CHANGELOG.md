@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v7.1.0-webui] - 2026-11-01
+
+### Highlights & Engine Upgrade
+- **Upgraded Core C Musl Runtime to v7.1.0**:
+  - Binary source: [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS)
+  - Release Commit: `4344dc5fc4ab981f1cf2df54c93bf32a6ebbdc85` (tag: `v7.1.0`)
+  - Target: ARM64 (`aarch64`), statically linked with Musl C libc.
+
+### Added
+- **Machine-Readable JSON Flags (`--json`) with Backward Compatibility**:
+  - Migrated `show`, `info`, and `check` commands to `--json` with adaptive fallback to `--format` for older binaries.
+- **Host Swap Isolation Controls (`--allow-swap`)**:
+  - Memory-limited containers are strictly isolated from host zram swap by default.
+  - Added `--allow-swap` flag / `allow_swap=1` configuration support and toggle in `CreateModal`.
+  - Added `swap_limit` kernel probe in `/api/check` and `swap_allowed` status field on containers.
+- **First-class `runit` Init System Integration**:
+  - Added `runit` init detection and service management (`sv up`, `sv down`, `sv restart`, `sv reload`, enable, disable, and log inspection) in `services.go`.
+  - Added `chkrunit.sh` helper in `deploy/magisk/bin/`.
+- **systemd 259+ Seccomp Mount API Shim Compatibility**:
+  - Exposed kernel probe `mount_api` via `/api/check` reflecting upstream dynamic seccomp fallback for modern systemd on kernels without 5.2 mount API.
+
+### Fixed
+- **CLI Exec Strict Order Fix**: Fixed argument order in `execContext` so `-u <user>` precedes `run`, preventing "Failed to execute command: No such file or directory" when running commands as non-root users.
+- **Removed Invalid `-e` Flag**: Replaced invalid `-e` flag loop in container start with safe environment file generation passed via `-E`.
+- **Durable Configuration Writes**: Upstream `fsync` protection before renaming `container.config` preventing 0-byte config files on F2FS after dirty reboots.
+- **Sparse Disk Image Resize**: Updated `sparsemgr.sh` to leverage native `resize2fs` metadata minimum calculation, eliminating fragile `awk` math.
+
+---
+
 ## [v7.0.0-webui] - 2026-10-14
 
 ### Highlights & Engine Upgrade

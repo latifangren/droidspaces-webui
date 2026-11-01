@@ -58,6 +58,7 @@
   let pulseAudio = false;
   let volatileMode = false;
   let allowSandboxing = true;
+  let allowSwap = false;
   let customBinds = '';
   let runAtBoot = false;
   let runAtBootPriority = 1;
@@ -379,6 +380,7 @@
       volatile: volatileMode,
       allow_sandboxing: allowSandboxing,
       memory: ramOptions[ramSliderIndex].value || undefined,
+      allow_swap: ramOptions[ramSliderIndex].value ? allowSwap : undefined,
       cpus: cpuOptions[cpuSliderIndex].value || undefined,
       binds: customBinds ? customBinds.split('\n').map((b) => b.trim()).filter(Boolean) : undefined,
       run_at_boot: runAtBoot,
@@ -637,6 +639,17 @@
               bind:value={ramSliderIndex}
               class="w-full accent-primary cursor-pointer"
             />
+            {#if ramOptions[ramSliderIndex].value}
+              <label class="flex items-center justify-between p-2.5 bg-paper rounded-lg border-2 border-line cursor-pointer text-xs mt-2">
+                <span class="flex items-center gap-1.5 font-bold text-ink">
+                  Allow Host Swap (--allow-swap)
+                  {#if kernelCapabilities && kernelCapabilities.swap_limit === 0}
+                    <span class="text-[9px] text-amber-500 font-mono font-bold">(No swap_limit)</span>
+                  {/if}
+                </span>
+                <input type="checkbox" bind:checked={allowSwap} class="w-4 h-4 accent-primary cursor-pointer" />
+              </label>
+            {/if}
           </div>
 
           <div class="space-y-2">

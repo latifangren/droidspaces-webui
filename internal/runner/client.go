@@ -106,9 +106,13 @@ func (c *Client) Show() (*model.ShowResult, error) {
 
 // ShowContext reads container state while honoring the caller's deadline.
 func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
-	out, err := c.runContext(ctx, "show", "--format")
+	out, err := c.runContext(ctx, "show", "--json")
 	if err != nil {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.runContext(ctx, "show", "--format")
+		if fbErr != nil {
+			return nil, err
+		}
 	}
 
 	var res model.ShowResult
@@ -166,6 +170,9 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 				if cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true" {
 					item.Anland = true
 				}
+				if !item.SwapAllowed && (cfg["allow_swap"] == "1" || cfg["allow_swap"] == "true") {
+					item.SwapAllowed = true
+				}
 			}
 			if item.RootFS != "" {
 				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
@@ -221,6 +228,7 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 				stoppedSummary.MacvlanParent = cfg["macvlan_parent"]
 				stoppedSummary.MacvlanMode = cfg["macvlan_mode"]
 				stoppedSummary.Anland = cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true"
+				stoppedSummary.SwapAllowed = cfg["allow_swap"] == "1" || cfg["allow_swap"] == "true"
 			}
 			if stoppedSummary.RootFS != "" {
 				stoppedSummary.DiskSize, stoppedSummary.DiskSizeBytes = GetContainerDiskSize(stoppedSummary.RootFS)
@@ -238,9 +246,13 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 }
 
 func (c *Client) Info(name string) (map[string]interface{}, error) {
-	out, err := c.run("info", "--name="+name, "--format")
+	out, err := c.run("info", "--name="+name, "--json")
 	if err != nil {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.run("info", "--name="+name, "--format")
+		if fbErr != nil {
+			return nil, err
+		}
 	}
 
 	var res map[string]interface{}
@@ -431,6 +443,9 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.ForceCgroupV1 {
 		args = append(args, "--force-cgroupv1")
 	}
+	if req.AllowSwap {
+		args = append(args, "--allow-swap")
+	}
 	if req.Memory != "" {
 		args = append(args, "--memory="+req.Memory)
 	}
@@ -449,8 +464,24 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.CustomInit != "" {
 		args = append(args, "--init="+req.CustomInit)
 	}
-	for _, env := range req.EnvVars {
-		args = append(args, "-e", env)
+	if len(req.EnvVars) > 0 {
+		envDir := filepath.Join(os.TempDir(), "droidspaces_env")
+		_ = os.MkdirAll(envDir, 0700)
+		envFilePath := filepath.Join(envDir, fmt.Sprintf("env_%s_%d.txt", req.Name, time.Now().UnixNano()))
+		var sb strings.Builder
+		for _, e := range req.EnvVars {
+			trimmed := strings.TrimSpace(e)
+			if trimmed != "" {
+				sb.WriteString(trimmed)
+				sb.WriteString("\n")
+			}
+		}
+		if sb.Len() > 0 {
+			if err := os.WriteFile(envFilePath, []byte(sb.String()), 0600); err == nil {
+				args = append(args, "-E", envFilePath)
+				defer os.Remove(envFilePath)
+			}
+		}
 	}
 	for _, b := range req.Binds {
 		args = append(args, "-B", b)
@@ -463,6 +494,11 @@ func (c *Client) Start(req model.StartRequest) error {
 
 	// Persist boot settings if specified
 	updates := make(map[string]string)
+	if req.AllowSwap {
+		updates["allow_swap"] = "1"
+	} else {
+		updates["allow_swap"] = "0"
+	}
 	if req.RunAtBoot {
 		updates["run_at_boot"] = "1"
 		updates["run_at_boot_priority"] = strconv.Itoa(req.RunAtBootPriority)
@@ -522,9 +558,13 @@ func (c *Client) Check() (string, error) {
 }
 
 func (c *Client) CheckFormat() (map[string]interface{}, error) {
-	out, err := c.run("check", "--format")
+	out, err := c.run("check", "--json")
 	if err != nil && len(strings.TrimSpace(out)) == 0 {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.run("check", "--format")
+		if fbErr != nil && len(strings.TrimSpace(out)) == 0 {
+			return nil, err
+		}
 	}
 	var res map[string]interface{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
@@ -561,15 +601,14 @@ func (c *Client) ExecContextBounded(ctx context.Context, container, command, use
 }
 
 func (c *Client) execContext(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
-	// The droidspaces CLI runs commands as root by default. Passing -u/--user to
-	// the upstream CLI currently makes it bail out with "Failed to execute
-	// command: No such file or directory" before reaching the container, so we
-	// only forward the user flag when the caller asked for a non-root identity.
-	args := []string{"--name=" + container, "run"}
+	// In Droidspaces CLI, sub-command 'run' runs under strict getopt parsing.
+	// Any CLI flags intended for droidspaces (such as -u/--user) must be placed
+	// BEFORE the 'run' command word; anything after 'run' is passed as the container command.
+	args := []string{"--name=" + container}
 	if user != "" && user != "root" {
 		args = append(args, "-u", user)
 	}
-	args = append(args, "sh", "-c", command)
+	args = append(args, "run", "sh", "-c", command)
 
 	cmd := exec.CommandContext(ctx, c.binPath, args...)
 	var stdoutBuf, stderrBuf bytes.Buffer
