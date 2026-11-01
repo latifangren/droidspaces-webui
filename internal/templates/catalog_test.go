@@ -454,3 +454,47 @@ func TestExtractArchiveSuccess(t *testing.T) {
 		}
 	}
 }
+
+func TestOfficialTemplatesAndChecksum(t *testing.T) {
+	official := GetOfficialTemplates()
+	if len(official) == 0 {
+		t.Fatalf("expected official templates to be loaded from builder catalog, got 0")
+	}
+
+	foundAlpine := false
+	foundOpenWrt := false
+	for _, tpl := range official {
+		if tpl.Origin != "official" {
+			t.Errorf("expected Origin 'official', got '%s' for %s", tpl.Origin, tpl.ID)
+		}
+		if tpl.URL == "" {
+			t.Errorf("expected URL for %s", tpl.ID)
+		}
+		if strings.Contains(tpl.ID, "alpine") {
+			foundAlpine = true
+		}
+		if strings.Contains(tpl.ID, "openwrt") {
+			foundOpenWrt = true
+			if tpl.Category != "network" || tpl.InitSystem != "procd" {
+				t.Errorf("expected OpenWrt to be network/procd, got %s/%s", tpl.Category, tpl.InitSystem)
+			}
+		}
+	}
+	if !foundAlpine || !foundOpenWrt {
+		t.Errorf("expected Alpine and OpenWrt in official catalog: alpine=%v, openwrt=%v", foundAlpine, foundOpenWrt)
+	}
+
+	// Test verifySHA256
+	tmpDir := t.TempDir()
+	sampleFile := filepath.Join(tmpDir, "sample.bin")
+	_ = os.WriteFile(sampleFile, []byte("hello-droidspaces"), 0644)
+
+	// sha256("hello-droidspaces") = a4dbdd22d645e54d6fcb20c909623e10fa487b7a13c31648a1ad594dfc4a2300
+	correctHash := "5c92fd97c47390d94b858ff61702b5b640bb084307b204d8c9bd3892f78d1dc6"
+	if err := verifySHA256(sampleFile, correctHash); err != nil {
+		t.Errorf("verifySHA256 failed on correct hash: %v", err)
+	}
+	if err := verifySHA256(sampleFile, "wronghash"); err == nil {
+		t.Errorf("expected verifySHA256 error on wrong hash")
+	}
+}

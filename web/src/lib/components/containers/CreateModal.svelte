@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import {
     X,
@@ -452,7 +452,16 @@
                       <CheckCircle size={14} class="text-primary shrink-0" />
                     {/if}
                   </div>
-                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono mb-1">
+                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono mb-1 flex-wrap">
+                    {#if tpl.origin === 'official'}
+                      <span class="px-1 py-0.2 rounded bg-amber-400 text-black text-[9px] font-black uppercase">
+                        Official
+                      </span>
+                    {:else if tpl.origin === 'vanilla'}
+                      <span class="px-1 py-0.2 rounded bg-surface border border-line text-[9px] font-bold text-muted uppercase">
+                        Vanilla
+                      </span>
+                    {/if}
                     <span class="px-1 py-0.2 rounded bg-surface border border-line text-[9px] uppercase font-bold text-ink">
                       {tpl.type || 'dir'}
                     </span>

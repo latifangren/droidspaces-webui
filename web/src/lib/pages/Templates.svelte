@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import {
     DownloadCloud,
@@ -22,7 +22,8 @@
   export let onNavigate: (route: string, data?: any) => void;
   export let containersData: any = { running: [], stopped: [] };
 
-  let activeTab = 'all'; // 'all' | 'server' | 'network' | 'blueprints' | 'apps'
+  let activeTab = 'all'; // 'all' | 'desktop' | 'server' | 'network' | 'blueprints' | 'apps'
+  let sourceFilter = 'all'; // 'all' | 'official' | 'vanilla'
   let appFilter = 'all';
   let templates: any[] = [];
   let appPresets: any[] = [];
@@ -102,9 +103,14 @@
   ];
 
   $: filteredDistros = (() => {
-    if (activeTab === 'all') return templates;
-    if (activeTab === 'server') return templates.filter((t) => t.category === 'server');
-    if (activeTab === 'network') return templates.filter((t) => t.category === 'network');
+    let list = templates;
+    if (sourceFilter === 'official') list = list.filter((t) => t.origin === 'official');
+    else if (sourceFilter === 'vanilla') list = list.filter((t) => t.origin === 'vanilla');
+
+    if (activeTab === 'all') return list;
+    if (activeTab === 'desktop') return list.filter((t) => t.category === 'desktop');
+    if (activeTab === 'server') return list.filter((t) => t.category === 'server');
+    if (activeTab === 'network') return list.filter((t) => t.category === 'network');
     return [];
   })();
   $: filteredApps = appFilter === 'all' ? appPresets : appPresets.filter((app) => app.category === appFilter);
@@ -270,13 +276,23 @@
       </button>
 
       <button
+        on:click={() => (activeTab = 'desktop')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'desktop'
+          ? 'bg-pink text-white'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Monitor size={12} />
+        <span>Desktop GUI</span>
+      </button>
+
+      <button
         on:click={() => (activeTab = 'server')}
         class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'server'
           ? 'bg-cyan text-black'
           : 'text-muted hover:text-ink'}"
       >
         <Server size={12} />
-        <span>Server (Headless)</span>
+        <span>Server (CLI)</span>
       </button>
 
       <button
@@ -311,38 +327,80 @@
     </div>
   </div>
 
-  <!-- Educational Guide Box: Server vs Desktop -->
-  <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal flex flex-col md:flex-row gap-4">
-    <div class="flex items-start gap-3 flex-1">
+  <!-- Source Filter (Hybrid Mode) -->
+  {#if activeTab === 'all' || activeTab === 'desktop' || activeTab === 'server' || activeTab === 'network'}
+    <div class="flex items-center gap-2 flex-wrap text-xs">
+      <span class="text-[11px] font-bold uppercase tracking-wider text-muted font-mono">Catalog Source:</span>
+      <div class="inline-flex rounded-lg border-2 border-line bg-paper p-0.5 shadow-brutal-sm gap-1">
+        <button
+          on:click={() => (sourceFilter = 'all')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition {sourceFilter === 'all'
+            ? 'bg-ink text-paper'
+            : 'text-muted hover:text-ink'}"
+        >
+          All Sources
+        </button>
+        <button
+          on:click={() => (sourceFilter = 'official')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition flex items-center gap-1 {sourceFilter === 'official'
+            ? 'bg-amber-400 text-black'
+            : 'text-muted hover:text-ink'}"
+        >
+          <Sparkles size={11} />
+          <span>Official Droidspaces (Android Ready)</span>
+        </button>
+        <button
+          on:click={() => (sourceFilter = 'vanilla')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition {sourceFilter === 'vanilla'
+            ? 'bg-cyan text-black'
+            : 'text-muted hover:text-ink'}"
+        >
+          Vanilla Minimal (LXC)
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Educational Guide Box: Official vs Vanilla vs Desktop -->
+  <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="flex items-start gap-3">
+      <div class="p-2 rounded-lg bg-amber-400 text-black border border-line shrink-0">
+        <Sparkles size={18} />
+      </div>
+      <div class="space-y-1">
+        <div class="text-xs font-black uppercase text-ink">
+          Official Droidspaces RootFS
+        </div>
+        <p class="text-[11px] text-muted leading-relaxed">
+          Pre-built & tuned specifically for <strong>Android Linux kernels</strong>. Includes <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">aid_inet (3003)</code> socket permissions, touch-friendly XFCE/bspwm desktops, pre-installed Docker, and OpenWrt with <strong>iptables-legacy + fw3</strong> to avoid Android kernel nftables lockups.
+        </p>
+      </div>
+    </div>
+
+    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-cyan text-black border border-line shrink-0">
         <Server size={18} />
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Headless Server Distros (Debian, Ubuntu, Alpine, Arch)
+          Vanilla Minimal (LXC)
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          All base distributions below are <strong>Headless Servers (pure CLI without GUI)</strong>.
-          Extremely lightweight, battery friendly, and sub-second boot (RAM 20MB - 200MB). Controlled via
-          <strong>Web Console</strong>, <strong>SSH</strong>, or <strong>WebUI</strong>. Ideal for
-          Docker, microservices, databases, and background farming nodes.
+          Raw upstream LinuxContainers rootfs images (~4MB Alpine, ~95MB Debian). Pure minimal CLI with sub-second boot, sub-20MB RAM, zero bloat. Ideal for custom services, microservices, and developers building from scratch.
         </p>
       </div>
     </div>
 
-    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3 flex-1">
+    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-pink text-white border border-line shrink-0">
         <Monitor size={18} />
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Need a Graphical Desktop GUI (XFCE)?
+          Desktop GUI (XFCE / bspwm)
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          Deploy <strong>Debian 12</strong> or <strong>Ubuntu 24.04</strong>. Inside <em>Web Console</em>,
-          run:
-          <code class="px-1.5 py-0.5 rounded bg-panel-alt border border-line font-mono text-[10px] text-ink">apt install -y xfce4 xfce4-goodies</code>.
-          Toggle the <strong>Termux:X11</strong> flag in the Hardware tab to render the desktop display directly to phone screen via Termux-X11 app!
+          Official images with <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">XFCE</code> or <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">bspwm</code> are ready to display on your Android screen. Simply launch the <strong>Termux-X11</strong> companion app or configure VNC/RDP to get a full touch workstation!
         </p>
       </div>
     </div>
@@ -450,17 +508,34 @@
           <div class="space-y-2.5">
             <!-- Header Badges -->
             <div class="flex items-center justify-between gap-2 flex-wrap">
-              <span class="badge-brutal bg-primary text-primary-text font-black">
-                {t.distro}
-              </span>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="badge-brutal bg-primary text-primary-text font-black">
+                  {t.distro}
+                </span>
+                {#if t.origin === 'official'}
+                  <span class="badge-brutal bg-amber-400 text-black font-black text-[9px] flex items-center gap-1">
+                    <Sparkles size={10} /> Official Droidspaces
+                  </span>
+                {:else if t.origin === 'vanilla'}
+                  <span class="badge-brutal bg-panel-alt text-muted font-bold text-[9px]">
+                    Vanilla LXC
+                  </span>
+                {/if}
+              </div>
 
               <div class="flex items-center gap-1.5">
                 <span
                   class="badge-brutal text-[9px] font-black uppercase {t.category === 'network'
                     ? 'bg-lime text-black'
+                    : t.category === 'desktop'
+                    ? 'bg-pink text-white'
                     : 'bg-cyan text-black'}"
                 >
-                  {t.category === 'network' ? 'NETWORK ROUTER' : 'SERVER / CLI'}
+                  {t.category === 'network'
+                    ? 'NETWORK ROUTER'
+                    : t.category === 'desktop'
+                    ? 'DESKTOP GUI'
+                    : 'SERVER / CLI'}
                 </span>
                 <span class="text-[10px] font-mono text-muted font-bold">{t.size_mb} MB</span>
               </div>
@@ -469,7 +544,11 @@
             <!-- Title & Subtitle -->
             <div>
               <h3 class="text-base font-black text-ink uppercase">{t.name}</h3>
-              <div class="text-[10px] font-mono font-bold text-muted mt-0.5 flex items-center gap-2">
+              <div class="text-[10px] font-mono font-bold text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+                {#if t.environment}
+                  <span class="text-ink font-semibold">{t.environment}</span>
+                  <span>•</span>
+                {/if}
                 <span>Init: {t.init_system || 'systemd'}</span>
                 <span>•</span>
                 <span>Min RAM: {t.min_ram || '256 MB'}</span>

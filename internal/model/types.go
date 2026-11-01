@@ -198,6 +198,9 @@ type TemplateInfo struct {
 	Description string `json:"description"`
 	Installed   bool   `json:"installed"`
 	LocalPath   string `json:"local_path,omitempty"`
+	Origin      string `json:"origin,omitempty"` // "official" | "vanilla" | "custom"
+	SHA256      string `json:"sha256,omitempty"`
+	Author      string `json:"author,omitempty"`
 }
 
 type SettingsConfig struct {
