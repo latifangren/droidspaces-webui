@@ -1,4 +1,4 @@
-# Container Creation & Configuration Guide
+﻿# Container Creation & Configuration Guide
 
 The **Create Linux Container** modal in Droidspaces WebUI is a unified 6-step orchestrator designed to configure native Linux container namespaces, cgroups, hardware pass-through, and autostart priorities.
 
@@ -67,10 +67,10 @@ Droidspaces enforces memory limits and CPU quotas using Linux Kernel **cgroups**
 - Direct pass-through of Qualcomm Adreno or ARM Mali GPU character device nodes (`/dev/kgsl-3d0`, `/dev/mali0`, `/dev/dri/*`) into the container.
 - Android 12+ compatibility: Binderfs nodes are bound automatically.
 
-### 5. Graphical Displays: Termux:X11 vs Anland Wayland (v7.0)
-Droidspaces v7.0 supports two complementary graphical display modes with built-in mutual exclusion:
+### 5. Graphical Displays: Termux:X11 vs Anland Wayland (v7+)
+Droidspaces supports two complementary graphical display modes with built-in mutual exclusion:
 - **Termux:X11 Display (`--x11`)**: Exposes display output to the Termux:X11 companion Android APK via `/tmp/.X11-unix/`. Ideal for traditional X11 window managers (XFCE, i3, Openbox).
-- **Anland Wayland Display (`--anland`, v7.0)**: Connects to Droidspaces' native high-performance Wayland display broker socket (`/run/display.sock`). Recommended for modern Wayland-native desktops (KDE Plasma, GNOME, Wayfire) and graphical Linux applications.
+- **Anland Wayland Display (`--anland`)**: Connects to Droidspaces' native high-performance Wayland display broker socket (`/run/display.sock`). Recommended for modern Wayland-native desktops (KDE Plasma, GNOME, Wayfire) and graphical Linux applications.
 ---
 
 ## Step 6: Network Configuration

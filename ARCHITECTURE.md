@@ -1,4 +1,4 @@
-# Architecture Overview: Droidspaces WebUI
+﻿# Architecture Overview: Droidspaces WebUI
 
 This document serves as the architectural blueprint for `droidspaces-webui`, detailing the system design, modular layers, data flows, and runtime interaction between the Android OS host (KernelSU / Magisk / APatch), the native C core containerization engine (`Droidspaces-OSS`), and the embedded Go + Svelte 5 WebUI daemon.
 
@@ -192,7 +192,7 @@ droidspaces-webui/
 
 ## 6. Deployment & Infrastructure
 
-- **Packaging Output**: Single flashable ZIP (`dist/droidspaces-unified-v7.0.0.zip`).
+- **Packaging Output**: Single flashable ZIP (`dist/droidspaces-unified-v7.1.0.zip`).
 - **Target Architecture**: Android ARM64 (`aarch64`), API Level 26+ (Android 8.0 to Android 15+).
 - **Host Testing**: Multi-platform cross-compilation produces standalone binaries (`bin/dsweb_arm64` and `bin/dsweb.exe`).
 - **Startup Sequence**:
@@ -225,8 +225,8 @@ droidspaces-webui/
   ```
 - **Live Device Deployment**:
   ```bash
-  adb push dist/droidspaces-unified-v7.0.0.zip /data/local/tmp/
-  adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces-unified-v7.0.0.zip'"
+  adb push dist/droidspaces-unified-v7.1.0.zip /data/local/tmp/
+  adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces-unified-v7.1.0.zip'"
   adb forward tcp:8484 tcp:84
   ```
 
@@ -261,17 +261,17 @@ Droidspaces provides two complementary graphical display mechanisms:
 - **Repository**: `droidspaces-webui`
 - **Authors**: `latifangren` & `ravindu644`
 - **Module ID**: `droidspaces`
-- **Version**: `v7.0.0-webui` (Code: `700`)
+- **Version**: `v7.1.0` (Code: `7100`)
 - **License**: Open Source (GPL / MIT dual-compatible components)
 
 ---
 
 ## 11. Upstream Binary Provenance
 
-- **Core C Engine**: `Droidspaces v7.0.0`
+- **Core C Engine**: `Droidspaces v7.1.0`
 - **Source**: [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS)
-- **Release Commit**: `64f7411bbd339369f6bb1e07b3858c25381f2bf2` (HEAD: `37e8b45de5ddc57d35cb8adfd8327add75e25159`)
-- **Build Timestamp**: `Oct 14 2026 12:53:08`
+- **Release Commit**: `4344dc5fc4ab981f1cf2df54c93bf32a6ebbdc85` (Official Release `v7.1.0`)
+- **Build Timestamp**: `Oct 27 2026 12:26:27`
 - **Target Architecture**: Linux AArch64 (`arm64-v8a`), static Musl C libc.
 ---
 

@@ -12,12 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/model"
 )
+
+var safeTemplateIDRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,128}$`)
 
 func init() {
 	// Android DNS Resolver Fix: Android lacks /etc/resolv.conf, causing Go pure resolver to fail on [::1]:53
@@ -372,17 +375,34 @@ func formatLocalName(name string) string {
 }
 
 func DeleteTemplate(templateID string) error {
-	storage := GetStorageDir()
+	if !safeTemplateIDRegex.MatchString(templateID) || strings.Contains(templateID, "..") {
+		return fmt.Errorf("invalid template ID: %s", templateID)
+	}
+
+	storage := filepath.Clean(GetStorageDir())
 	if strings.HasPrefix(templateID, "local-") {
-		name := strings.TrimPrefix(templateID, "local-")
-		return os.RemoveAll(filepath.Join(storage, name))
+		name := filepath.Base(strings.TrimPrefix(templateID, "local-"))
+		target := filepath.Join(storage, name)
+		if !strings.HasPrefix(filepath.Clean(target), storage) {
+			return fmt.Errorf("invalid template path")
+		}
+		return os.RemoveAll(target)
 	}
 	if strings.HasPrefix(templateID, "img-") {
-		name := strings.TrimPrefix(templateID, "img-")
-		_ = os.RemoveAll(filepath.Join(storage, name))
-		return os.Remove(filepath.Join(storage, name+".img"))
+		name := filepath.Base(strings.TrimPrefix(templateID, "img-"))
+		targetDir := filepath.Join(storage, name)
+		targetImg := filepath.Join(storage, name+".img")
+		if !strings.HasPrefix(filepath.Clean(targetDir), storage) || !strings.HasPrefix(filepath.Clean(targetImg), storage) {
+			return fmt.Errorf("invalid template path")
+		}
+		_ = os.RemoveAll(targetDir)
+		return os.Remove(targetImg)
 	}
-	targetDir := filepath.Join(storage, templateID)
+	name := filepath.Base(templateID)
+	targetDir := filepath.Join(storage, name)
+	if !strings.HasPrefix(filepath.Clean(targetDir), storage) {
+		return fmt.Errorf("invalid template path")
+	}
 	return os.RemoveAll(targetDir)
 }
 

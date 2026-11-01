@@ -1,4 +1,4 @@
-# Droidspaces WebUI
+﻿# Droidspaces WebUI
 
 > [!WARNING]
 > ### ⚠️ EXPERIMENTAL SOFTWARE — USE AT YOUR OWN RISK
@@ -123,16 +123,16 @@ Key highlights of the `v6.6` $\rightarrow$ `v7.0` upgrade:
 ## Installation & Deployment
 
 ### Method 1: Flashing Unified Magisk / KernelSU Module (Recommended)
-1. Build the module or download the pre-packaged zip from `dist/droidspaces-unified-v7.0.0.zip`.
+1. Build the module or download the pre-packaged zip from `dist/droidspaces-unified-v7.1.0.zip`.
 2. Open **KernelSU**, **Magisk**, or **APatch** Manager on your phone.
-3. Select **Modules** -> **Install from storage** -> choose `droidspaces-unified-v7.0.0.zip`.
+3. Select **Modules** -> **Install from storage** -> choose `droidspaces-unified-v7.1.0.zip`.
 4. Reboot the phone. The daemon starts automatically in the background on port `84`.
 
 ### Method 2: Fast Live Deployment via ADB (No Reboot)
 If you are actively developing:
 ```bash
 # Push and install the module live
-adb push dist/droidspaces-unified-v7.0.0.zip /data/local/tmp/droidspaces.zip
+adb push dist/droidspaces-unified-v7.1.0.zip /data/local/tmp/droidspaces.zip
 adb shell "su -c '/data/adb/ksu/bin/ksud module install /data/local/tmp/droidspaces.zip'"
 
 # Sync live files and restart the daemon
@@ -164,7 +164,7 @@ The build script will:
 1. Build the Svelte 5 frontend with Bun (`web/dist/`).
 2. Cross-compile the Android ARM64 Go binary (`bin/dsweb_arm64`) with embedded frontend assets.
 3. Compile the host development binary (`bin/dsweb` / `bin/dsweb.exe`).
-4. Package the unified flashable ZIP module into `dist/droidspaces-unified-v7.0.0.zip`.
+4. Package the unified flashable ZIP module into `dist/droidspaces-unified-v7.1.0.zip`.
 
 ---
 

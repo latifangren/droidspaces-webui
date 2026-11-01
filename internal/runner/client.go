@@ -548,7 +548,7 @@ func (c *Client) Delete(name string) error {
 		}
 	}
 
-	for _, pdir := range []string{"/data/local/Droidspaces/Pids", "/var/lib/Droidspaces/Pids"} {
+	for _, pdir := range pidsDirs {
 		_ = os.Remove(filepath.Join(pdir, name+".pid"))
 	}
 

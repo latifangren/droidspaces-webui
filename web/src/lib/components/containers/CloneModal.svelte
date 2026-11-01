@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { X, Copy, Loader2, ShieldCheck, Cpu } from 'lucide-svelte';
   import { toast } from '../../stores/toast';
 
@@ -71,8 +71,9 @@
       <!-- Form -->
       <div class="space-y-3.5 text-xs font-mono">
         <div>
-          <label class="block font-black uppercase text-ink text-[11px] mb-1">New Cloned Container Name</label>
+          <label for="clone-target-name" class="block font-black uppercase text-ink text-[11px] mb-1">New Cloned Container Name</label>
           <input
+            id="clone-target-name"
             type="text"
             bind:value={targetName}
             placeholder="e.g. arch-01-clone"

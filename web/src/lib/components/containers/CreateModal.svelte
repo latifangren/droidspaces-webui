@@ -517,8 +517,9 @@
           {#if showManualPaths || installedTemplates.length === 0}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1 p-3 rounded-lg border border-line bg-panel/50">
               <div>
-                <label class="label-brutal">RootFS Directory Path</label>
+                <label for="create-rootfs-dir-input" class="label-brutal">RootFS Directory Path</label>
                 <input
+                  id="create-rootfs-dir-input"
                   type="text"
                   bind:value={rootfs}
                   on:input={() => { if (rootfs) rootfsImg = ''; }}
@@ -527,8 +528,9 @@
                 />
               </div>
               <div>
-                <label class="label-brutal">RootFS Image (.img) Path</label>
+                <label for="create-rootfs-img-input" class="label-brutal">RootFS Image (.img) Path</label>
                 <input
+                  id="create-rootfs-img-input"
                   type="text"
                   bind:value={rootfsImg}
                   on:input={() => { if (rootfsImg) rootfs = ''; }}
@@ -544,7 +546,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <div class="flex items-center justify-between mb-1">
-              <label class="label-brutal !mb-0">Container Name *</label>
+              <label for="create-container-name-input" class="label-brutal !mb-0">Container Name *</label>
               {#if isNameCustomizedByUser && selectedDistroId}
                 <button
                   type="button"
@@ -558,6 +560,7 @@
               {/if}
             </div>
             <input
+              id="create-container-name-input"
               type="text"
               bind:value={name}
               on:input={() => { isNameCustomizedByUser = true; }}
@@ -580,8 +583,9 @@
             </div>
           </div>
           <div>
-            <label class="label-brutal">Hostname</label>
+            <label for="create-hostname-input" class="label-brutal">Hostname</label>
             <input
+              id="create-hostname-input"
               type="text"
               bind:value={hostname}
               placeholder="droidspaces"
@@ -694,7 +698,8 @@
               <span class="text-[10px] text-muted block">Starts container automatically on phone boot</span>
             </div>
             {#if runAtBoot}
-              <div class="flex items-center gap-2" on:click|stopPropagation>
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+              <div class="flex items-center gap-2" on:click|stopPropagation role="presentation">
                 <span class="text-[10px] font-bold text-muted">Priority:</span>
                 <input
                   type="number"
@@ -758,7 +763,7 @@
             />
             <div>
               <span class="text-xs font-black uppercase text-ink flex items-center gap-1.5">
-                <Monitor size={13} class="text-purple-400" /> Anland Wayland (v7.0)
+                <Monitor size={13} class="text-purple-400" /> Anland Wayland (Native)
               </span>
               <span class="text-[10px] text-muted block">Native Wayland broker daemon (/run/display.sock)</span>
             </div>

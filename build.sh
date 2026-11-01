@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
@@ -30,7 +30,7 @@ if [ -f bin/busybox_arm64 ]; then
 fi
 
 VERSION=$(grep '^version=' deploy/magisk/module.prop | cut -d= -f2)
-[ -z "$VERSION" ] && VERSION="v7.0.0"
+[ -z "$VERSION" ] && VERSION="v7.1.0"
 ZIP_NAME="droidspaces-unified-${VERSION}.zip"
 
 cd dist/module
@@ -41,7 +41,7 @@ elif command -v python >/dev/null 2>&1; then
 elif command -v powershell >/dev/null 2>&1; then
   powershell -Command "Compress-Archive -Path * -DestinationPath ../${ZIP_NAME} -Force"
 fi
-cp "../${ZIP_NAME}" "../droidspaces-unified-v7.0.0.zip" 2>/dev/null || true
+cp "../${ZIP_NAME}" "../droidspaces-unified-v7.1.0.zip" 2>/dev/null || true
 cd "$DIR"
 echo "=================================================="
 echo "✔ Unified Build complete!"

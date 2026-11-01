@@ -179,6 +179,14 @@ func TestDeleteTemplate(t *testing.T) {
 	if err := DeleteTemplate("generic-del"); err != nil {
 		t.Fatalf("DeleteTemplate generic failed: %v", err)
 	}
+
+	// Test invalid path traversal template IDs
+	if err := DeleteTemplate("../../etc"); err == nil {
+		t.Errorf("expected error for path traversal template ID")
+	}
+	if err := DeleteTemplate("local-../../data"); err == nil {
+		t.Errorf("expected error for path traversal template ID with local- prefix")
+	}
 }
 
 func TestJobStatusAndProgressWriter(t *testing.T) {

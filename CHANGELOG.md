@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to **Droidspaces WebUI** are documented in this file.
 
@@ -27,8 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `chkrunit.sh` helper in `deploy/magisk/bin/`.
 - **systemd 259+ Seccomp Mount API Shim Compatibility**:
   - Exposed kernel probe `mount_api` via `/api/check` reflecting upstream dynamic seccomp fallback for modern systemd on kernels without 5.2 mount API.
+- **Hybrid Official Droidspaces RootFS Catalog**:
+  - Direct integration with `Droidspaces/Droidspaces-rootfs-builder` rootfs repository (22 pre-tuned Android rootfs).
+  - Built-in embedded fallback and SHA-256 integrity check.
+  - Multi-tab filter (Official Android-ready vs Vanilla LXC) and Desktop GUI tab.
+- **Frontend Bundle Code Splitting**:
+  - Chunks split into `index.js` (261 kB), `icons.js` (315 kB), and `xterm.js` (334 kB).
+  - Initial dashboard load time reduced by >70%.
 
 ### Fixed
+- **RootFS Delete Path Traversal (CWE-22)**: Hardened `DeleteTemplate` with strict regex and `filepath.Base` validation.
+- **Version Alignment**: Updated WebUI AppSidebar badge to `v7.1.0`, Settings runtime to `Droidspaces v7.1.0`, and `module.prop` to `v7.1.0` (`7100`).
 - **CLI Exec Strict Order Fix**: Fixed argument order in `execContext` so `-u <user>` precedes `run`, preventing "Failed to execute command: No such file or directory" when running commands as non-root users.
 - **Removed Invalid `-e` Flag**: Replaced invalid `-e` flag loop in container start with safe environment file generation passed via `-E`.
 - **Durable Configuration Writes**: Upstream `fsync` protection before renaming `container.config` preventing 0-byte config files on F2FS after dirty reboots.
