@@ -465,9 +465,6 @@ func (c *Client) Start(req model.StartRequest) error {
 		args = append(args, "--init="+req.CustomInit)
 	}
 	if len(req.EnvVars) > 0 {
-		envDir := filepath.Join(os.TempDir(), "droidspaces_env")
-		_ = os.MkdirAll(envDir, 0700)
-		envFilePath := filepath.Join(envDir, fmt.Sprintf("env_%s_%d.txt", req.Name, time.Now().UnixNano()))
 		var sb strings.Builder
 		for _, e := range req.EnvVars {
 			trimmed := strings.TrimSpace(e)
@@ -477,9 +474,17 @@ func (c *Client) Start(req model.StartRequest) error {
 			}
 		}
 		if sb.Len() > 0 {
-			if err := os.WriteFile(envFilePath, []byte(sb.String()), 0600); err == nil {
-				args = append(args, "-E", envFilePath)
-				defer os.Remove(envFilePath)
+			tmpFile, err := os.CreateTemp("", "ds_env_*.txt")
+			if err == nil {
+				envPath := tmpFile.Name()
+				_, writeErr := tmpFile.WriteString(sb.String())
+				closeErr := tmpFile.Close()
+				if writeErr == nil && closeErr == nil {
+					args = append(args, "-E", envPath)
+					defer os.Remove(envPath)
+				} else {
+					_ = os.Remove(envPath)
+				}
 			}
 		}
 	}
