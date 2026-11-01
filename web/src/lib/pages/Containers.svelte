@@ -17,8 +17,10 @@
     DownloadCloud,
     Loader2,
     Copy,
+    Sliders,
   } from 'lucide-svelte';
   import CreateModal from '../components/containers/CreateModal.svelte';
+  import EditModal from '../components/containers/EditModal.svelte';
   import BootOrderModal from '../components/containers/BootOrderModal.svelte';
   import DetailModal from '../components/containers/DetailModal.svelte';
   import BackupModal from '../components/containers/BackupModal.svelte';
@@ -41,6 +43,9 @@
   let showBootModal = false;
   let showDetailModal = false;
   let selectedContainerDetail: any = null;
+  let showEditModal = false;
+  let editTargetContainer = '';
+  let editContainerIsRunning = false;
   let showBackupModal = false;
   let backupTargetContainer = '';
   let showCloneModal = false;
@@ -122,6 +127,12 @@
     } catch (e: any) {
       toast.error('Error inspecting container: ' + e.message);
     }
+  }
+
+  function openEditContainer(cname: string, isRun: boolean) {
+    editTargetContainer = cname;
+    editContainerIsRunning = isRun;
+    showEditModal = true;
   }
 
   async function openBootModal() {
@@ -541,6 +552,13 @@
                       <Layers size={14} />
                     </button>
                     <button
+                      on:click={() => openEditContainer(c.name, true)}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-edit"
+                      title="Edit Container Configuration"
+                    >
+                      <Sliders size={14} />
+                    </button>
+                    <button
                       on:click={() => onNavigate('terminal', { container: c.name })}
                       class="btn-brutal !p-1.5 !rounded-lg btn-action-terminal"
                       title="Open Web Terminal"
@@ -582,6 +600,13 @@
                       title="View Specs & Backups"
                     >
                       <Info size={14} />
+                    </button>
+                    <button
+                      on:click={() => openEditContainer(c.name, false)}
+                      class="btn-brutal !p-1.5 !rounded-lg btn-action-edit"
+                      title="Edit Container Configuration"
+                    >
+                      <Sliders size={14} />
                     </button>
                     <button
                       on:click={() => { cloneSourceContainer = c.name; showCloneModal = true; }}
@@ -713,6 +738,18 @@
     container={selectedContainerDetail}
     onClose={() => (showDetailModal = false)}
     onNavigateTerminal={(cname, user) => onNavigate('terminal', { container: cname, user })}
+    onEditContainer={(cname) => openEditContainer(cname, selectedContainerDetail?.status === 'running' || selectedContainerDetail?.pid > 0)}
+  />
+
+  <!-- Edit Container Modal -->
+  <EditModal
+    bind:show={showEditModal}
+    containerName={editTargetContainer}
+    isRunning={editContainerIsRunning}
+    {hostInterfaces}
+    runningContainers={containersData?.running || []}
+    onClose={() => { showEditModal = false; }}
+    onSaved={() => { onRefresh(); }}
   />
 
   <!-- Action Confirm Modal -->

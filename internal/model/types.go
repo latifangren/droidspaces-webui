@@ -128,6 +128,85 @@ type StartRequest struct {
 	EnvVars           []string `json:"env_vars,omitempty"`
 }
 
+type ContainerConfigDetails struct {
+	Name              string            `json:"name"`
+	Hostname          string            `json:"hostname"`
+	RootFS            string            `json:"rootfs"`
+	Net               string            `json:"net"`
+	NATIP             string            `json:"nat_ip,omitempty"`
+	Upstream          string            `json:"upstream,omitempty"`
+	Gateway           string            `json:"gateway,omitempty"`
+	GatewayNet        string            `json:"gateway_net,omitempty"`
+	GatewayIface      string            `json:"gateway_iface,omitempty"`
+	GatewayBridge     string            `json:"gateway_bridge,omitempty"`
+	MacvlanParent     string            `json:"macvlan_parent,omitempty"`
+	MacvlanMode       string            `json:"macvlan_mode,omitempty"`
+	Port              []string          `json:"port,omitempty"`
+	DNS               string            `json:"dns,omitempty"`
+	DisableIPv6       bool              `json:"disable_ipv6"`
+	AndroidStorage    bool              `json:"android_storage"`
+	HWAccess          bool              `json:"hw_access"`
+	GPU               bool              `json:"gpu"`
+	TermuxX11         bool              `json:"termux_x11"`
+	VirGL             bool              `json:"virgl"`
+	PulseAudio        bool              `json:"pulse_audio"`
+	Anland            bool              `json:"anland"`
+	SELinuxPermissive bool              `json:"selinux_permissive"`
+	Volatile          bool              `json:"volatile"`
+	ForceCgroupV1     bool              `json:"force_cgroupv1"`
+	AllowSwap         bool              `json:"allow_swap"`
+	Memory            string            `json:"memory,omitempty"`
+	CPUs              string            `json:"cpus,omitempty"`
+	PIDsLimit         string            `json:"pids_limit,omitempty"`
+	Privileged        string            `json:"privileged,omitempty"`
+	AllowSandboxing   bool              `json:"allow_sandboxing"`
+	Binds             []string          `json:"binds,omitempty"`
+	RunAtBoot         bool              `json:"run_at_boot"`
+	RunAtBootPriority int               `json:"run_at_boot_priority"`
+	CustomInit        string            `json:"custom_init,omitempty"`
+	EnvVars           []string          `json:"env_vars,omitempty"`
+	IsRunning         bool              `json:"is_running"`
+	Raw               map[string]string `json:"raw,omitempty"`
+}
+
+type UpdateConfigRequest struct {
+	Hostname          string   `json:"hostname,omitempty"`
+	Net               string   `json:"net,omitempty"`
+	NATIP             string   `json:"nat_ip,omitempty"`
+	Upstream          string   `json:"upstream,omitempty"`
+	Gateway           string   `json:"gateway,omitempty"`
+	GatewayNet        string   `json:"gateway_net,omitempty"`
+	GatewayIface      string   `json:"gateway_iface,omitempty"`
+	GatewayBridge     string   `json:"gateway_bridge,omitempty"`
+	MacvlanParent     string   `json:"macvlan_parent,omitempty"`
+	MacvlanMode       string   `json:"macvlan_mode,omitempty"`
+	Port              []string `json:"port,omitempty"`
+	DNS               string   `json:"dns,omitempty"`
+	DisableIPv6       bool     `json:"disable_ipv6,omitempty"`
+	AndroidStorage    bool     `json:"android_storage,omitempty"`
+	HWAccess          bool     `json:"hw_access,omitempty"`
+	GPU               bool     `json:"gpu,omitempty"`
+	TermuxX11         bool     `json:"termux_x11,omitempty"`
+	VirGL             bool     `json:"virgl,omitempty"`
+	PulseAudio        bool     `json:"pulse_audio,omitempty"`
+	Anland            bool     `json:"anland,omitempty"`
+	SELinuxPermissive bool     `json:"selinux_permissive,omitempty"`
+	Volatile          bool     `json:"volatile,omitempty"`
+	ForceCgroupV1     bool     `json:"force_cgroupv1,omitempty"`
+	AllowSwap         bool     `json:"allow_swap,omitempty"`
+	Memory            string   `json:"memory,omitempty"`
+	CPUs              string   `json:"cpus,omitempty"`
+	PIDsLimit         string   `json:"pids_limit,omitempty"`
+	Privileged        string   `json:"privileged,omitempty"`
+	AllowSandboxing   bool     `json:"allow_sandboxing,omitempty"`
+	Binds             []string `json:"binds,omitempty"`
+	RunAtBoot         bool     `json:"run_at_boot,omitempty"`
+	RunAtBootPriority int      `json:"run_at_boot_priority,omitempty"`
+	CustomInit        string   `json:"custom_init,omitempty"`
+	EnvVars           []string `json:"env_vars,omitempty"`
+	RestartNow        bool     `json:"restart_now,omitempty"`
+}
+
 type ExecRequest struct {
 	Container string `json:"container"`
 	Command   string `json:"command"`

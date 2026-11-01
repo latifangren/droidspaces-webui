@@ -164,7 +164,10 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 						item.IP = cfgIP
 					}
 				}
-				item.Net = cfg["net"]
+				item.Net = cfg["net_mode"]
+				if item.Net == "" {
+					item.Net = cfg["net"]
+				}
 				item.MacvlanParent = cfg["macvlan_parent"]
 				item.MacvlanMode = cfg["macvlan_mode"]
 				if cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true" {
@@ -224,7 +227,10 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 					rawPorts = cfg["port"]
 				}
 				stoppedSummary.PortMappings = ParsePortMappings(rawPorts)
-				stoppedSummary.Net = cfg["net"]
+				stoppedSummary.Net = cfg["net_mode"]
+				if stoppedSummary.Net == "" {
+					stoppedSummary.Net = cfg["net"]
+				}
 				stoppedSummary.MacvlanParent = cfg["macvlan_parent"]
 				stoppedSummary.MacvlanMode = cfg["macvlan_mode"]
 				stoppedSummary.Anland = cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true"

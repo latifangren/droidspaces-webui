@@ -746,3 +746,80 @@ func TestStartMacvlanFlags(t *testing.T) {
 	}
 	_ = c.Start(req)
 }
+
+func TestConfigOpsGetAndUpdate(t *testing.T) {
+	c := newTestClient()
+	tmpDir := t.TempDir()
+	t.Setenv("DROIDSPACES_CONTAINERS_DIR", tmpDir)
+
+	// Invalid name
+	_, err := c.GetContainerConfigDetails("bad/name")
+	if err == nil {
+		t.Fatalf("expected error for invalid container name")
+	}
+
+	// Missing container
+	_, err = c.GetContainerConfigDetails("missing-box")
+	if err == nil {
+		t.Fatalf("expected error for missing container")
+	}
+
+	boxDir := filepath.Join(tmpDir, "test-edit-box")
+	_ = os.MkdirAll(boxDir, 0755)
+	_ = os.WriteFile(filepath.Join(boxDir, "container.config"), []byte("name=test-edit-box\nhostname=box-host\nrootfs_path=/mock/path\nnet_mode=gateway\ngateway_container=gw-01\ngateway_net=lan\ngateway_lan_ifname=eth1\ngateway_bridge=ds-lan\nmemory_limit=1073741824\ncpu_quota=100000\ncpu_period=100000\nport_forwards=80:80\nbind_mounts=/sdcard:/sdcard:ro\nrun_at_boot=1\nrun_at_boot_priority=3\nenable_gpu_mode=1\nenable_x11=1\nallow_sandboxing=1\n"), 0644)
+
+	details, err := c.GetContainerConfigDetails("test-edit-box")
+	if err != nil {
+		t.Fatalf("failed to get config details: %v", err)
+	}
+	if details.Name != "test-edit-box" || details.Hostname != "box-host" || details.Net != "gateway" || details.Gateway != "gw-01" {
+		t.Fatalf("unexpected details: %+v", details)
+	}
+	if details.Memory != "1G" || details.CPUs != "1" || !details.GPU || !details.TermuxX11 || !details.AllowSandboxing {
+		t.Fatalf("unexpected resources or flags: %+v", details)
+	}
+	if len(details.Binds) != 1 || details.Binds[0] != "/sdcard:/sdcard:ro" {
+		t.Fatalf("unexpected binds: %+v", details.Binds)
+	}
+
+	// Update container config
+	updateReq := model.UpdateConfigRequest{
+		Hostname:          "updated-host",
+		Net:               "nat",
+		NATIP:             "172.28.0.99",
+		Memory:            "2G",
+		CPUs:              "4",
+		Port:              []string{"8080:80/tcp", "9090:90/udp"},
+		DNS:               "8.8.8.8",
+		DisableIPv6:       true,
+		AndroidStorage:    true,
+		HWAccess:          false,
+		GPU:               true,
+		TermuxX11:         false,
+		Anland:            true,
+		PulseAudio:        true,
+		RunAtBoot:         true,
+		RunAtBootPriority: 12,
+		CustomInit:        "/bin/sh",
+		EnvVars:           []string{"VAR1=val1", "VAR2=val2"},
+		Binds:             []string{"/data:/data"},
+	}
+
+	if err := c.UpdateContainerConfig("test-edit-box", updateReq); err != nil {
+		t.Fatalf("failed to update container config: %v", err)
+	}
+
+	updated, err := c.GetContainerConfigDetails("test-edit-box")
+	if err != nil {
+		t.Fatalf("failed to get updated config details: %v", err)
+	}
+	if updated.Hostname != "updated-host" || updated.Net != "nat" || updated.NATIP != "172.28.0.99" || updated.Memory != "2G" {
+		t.Fatalf("updated details did not persist: %+v", updated)
+	}
+	if !updated.DisableIPv6 || !updated.Anland || !updated.PulseAudio || updated.TermuxX11 {
+		t.Fatalf("flags did not update: %+v", updated)
+	}
+	if len(updated.EnvVars) != 2 || updated.EnvVars[0] != "VAR1=val1" {
+		t.Fatalf("env vars not updated: %+v", updated.EnvVars)
+	}
+}

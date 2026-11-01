@@ -128,6 +128,8 @@ func buildKernelCheckResultFromJSON(raw map[string]interface{}) model.KernelChec
 		{"seccomp", "Seccomp BPF Filter", "Filters dangerous syscalls inside containers", "Kernel CONFIG_SECCOMP=y", false},
 		{"mount_api", "New Mount API (systemd 259+)", "fsopen() and 5.2 mount API, or Seccomp fallback shim", "Kernel 5.2+ or Seccomp shim", false},
 		{"overlayfs", "OverlayFS Driver", "Required for Docker overlay2 storage and volatile mode", "Kernel CONFIG_OVERLAY_FS=y", false},
+		{"devtmpfs", "Devtmpfs Subsystem", "Mounts host hardware and GPU device nodes (--hw-access)", "Kernel CONFIG_DEVTMPFS=y", false},
+		{"fuse", "FUSE Userspace Filesystem", "Filesystem in Userspace for Rclone, SSHFS, and user mounts", "Kernel CONFIG_FUSE_FS=y", false},
 	}
 
 	networkItems := []itemDef{
@@ -145,6 +147,8 @@ func buildKernelCheckResultFromJSON(raw map[string]interface{}) model.KernelChec
 		{"cpu_limit", "CPU Bandwidth Quota", "Restricts container CPU execution percentage", "Kernel CONFIG_CFS_BANDWIDTH=y", false},
 		{"cpu_accounting", "CPU Usage Accounting", "Real-time container CPU load & stat tracking", "Kernel CONFIG_CGROUP_CPUACCT=y", false},
 		{"pids_limit", "Process Number Limit", "Guards against fork bombs (max PID count)", "Kernel CONFIG_CGROUP_PIDS=y", false},
+		{"epoll", "Epoll Event Multiplexer", "Efficient I/O event notification multiplexer", "Kernel CONFIG_EPOLL=y", false},
+		{"signalfd", "SignalFD Subsystem", "Synchronous signal delivery via file descriptors", "Kernel CONFIG_SIGNALFD=y", false},
 	}
 
 	makeGroup := func(title, desc string, required bool, defs []itemDef) model.KernelCheckGroup {
@@ -358,6 +362,22 @@ func getHumanFeatureDesc(name string) string {
 		return "Unprivileged user namespaces disabled in kernel. Docker and Podman run normally in rootful mode."
 	case "IPv6 NAT support":
 		return "IPv6 NAT masquerading not configured in kernel. Containers default to high-speed IPv4 NAT."
+	case "epoll support":
+		return "Efficient asynchronous I/O event notification multiplexing."
+	case "signalfd support":
+		return "Signal handling delivery via file descriptors."
+	case "devtmpfs support":
+		return "Devtmpfs filesystem for device node pass-through in hardware access mode."
+	case "FUSE support":
+		return "Filesystem in Userspace (FUSE) for Rclone, SSHFS, and custom filesystems."
+	case "Macvlan support":
+		return "Physical Ethernet and Wi-Fi interface direct bridging (CONFIG_MACVLAN)."
+	case "PTY support":
+		return "Unix98 pseudo-terminal master/slave pair support."
+	case "devpts support":
+		return "Virtual terminal slave devpts filesystem."
+	case "Loop device":
+		return "Loop block device driver for mounting ext4 .img sparse disk images."
 	default:
 		return ""
 	}

@@ -81,6 +81,35 @@ func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	if len(parts) >= 4 {
 		action := parts[3]
 
+		// Container Configuration (Get/Update)
+		if action == "config" {
+			switch r.Method {
+			case http.MethodGet:
+				details, err := s.client.GetContainerConfigDetails(name)
+				if err != nil {
+					s.sendJSON(w, http.StatusNotFound, nil, err.Error())
+					return
+				}
+				s.sendJSON(w, http.StatusOK, details, "")
+				return
+			case http.MethodPut, http.MethodPost:
+				var req model.UpdateConfigRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					s.sendJSON(w, http.StatusBadRequest, nil, err.Error())
+					return
+				}
+				if err := s.client.UpdateContainerConfig(name, req); err != nil {
+					s.sendJSON(w, http.StatusInternalServerError, nil, err.Error())
+					return
+				}
+				s.sendJSON(w, http.StatusOK, map[string]string{"message": "configuration updated"}, "")
+				return
+			default:
+				s.sendJSON(w, http.StatusMethodNotAllowed, nil, "method not allowed")
+				return
+			}
+		}
+
 		// Init System Services
 		if action == "services" {
 			s.handleServicesRoute(w, r, name, parts)

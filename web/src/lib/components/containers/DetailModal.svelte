@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X, Activity, Cpu, Users, Layers, HardDrive, Archive, DownloadCloud, Trash2, Loader2 } from 'lucide-svelte';
+  import { X, Activity, Cpu, Users, Layers, HardDrive, Archive, DownloadCloud, Trash2, Loader2, Sliders } from 'lucide-svelte';
   import ServicesTab from './ServicesTab.svelte';
   import ProcessesTab from './ProcessesTab.svelte';
 
@@ -7,6 +7,7 @@
   export let container: any = null;
   export let onClose: () => void;
   export let onNavigateTerminal: (containerName: string, user: string) => void;
+  export let onEditContainer: ((cname: string) => void) | undefined = undefined;
 
   let activeTab: 'specs' | 'services' | 'processes' | 'users' | 'backups' = 'specs';
 
@@ -251,6 +252,26 @@
       <!-- Tab Content -->
       <div class="p-5 overflow-y-auto space-y-4 flex-1 text-xs">
         {#if activeTab === 'specs'}
+          <div class="flex items-center justify-between pb-1">
+            <span class="text-xs font-black uppercase tracking-wider text-ink flex items-center gap-1.5">
+              <Layers size={14} class="text-primary" /> Active Specifications
+            </span>
+            {#if onEditContainer}
+              <button
+                type="button"
+                on:click={() => {
+                  const cname = container.name;
+                  onClose();
+                  onEditContainer(cname);
+                }}
+                class="btn-brutal btn-brutal-primary !py-1 !px-2.5 text-xs flex items-center gap-1.5 cursor-pointer"
+                title="Edit Container Configuration"
+              >
+                <Sliders size={13} />
+                <span>Edit Configuration</span>
+              </button>
+            {/if}
+          </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
             <div class="p-2.5 bg-panel-alt rounded border border-line">
               <span class="text-muted block text-[10px]">Init PID</span>

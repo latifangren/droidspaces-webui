@@ -839,3 +839,97 @@ func TestBackupsEmptyOrMissingDirGraceful(t *testing.T) {
 		t.Fatalf("expected 200 for container backups with missing dir, got %d: %s", wBox.Code, wBox.Body.String())
 	}
 }
+
+func TestContainerConfigGetAndUpdate(t *testing.T) {
+	s, tmpDir, token := setupTestServer(t)
+	h := s.Handler()
+
+	// 1. Missing container returns 404
+	wMiss := doRequest(h, token, "GET", "/api/containers/missing-box/config", nil)
+	if wMiss.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing container config, got %d: %s", wMiss.Code, wMiss.Body.String())
+	}
+
+	// 2. Setup mock container config
+	boxDir := filepath.Join(tmpDir, "Containers", "demo-box")
+	_ = os.MkdirAll(boxDir, 0755)
+	initialConfig := "name=demo-box\nhostname=demo-host\nrootfs_path=/mock/rootfs\nnet_mode=nat\nmemory_limit=536870912\ncpu_quota=200000\ncpu_period=100000\nport_forwards=8080:80/tcp\nrun_at_boot=1\nrun_at_boot_priority=5\n"
+	_ = os.WriteFile(filepath.Join(boxDir, "container.config"), []byte(initialConfig), 0644)
+
+	// 3. GET /api/containers/demo-box/config
+	wGet := doRequest(h, token, "GET", "/api/containers/demo-box/config", nil)
+	if wGet.Code != http.StatusOK {
+		t.Fatalf("expected 200 for GET config, got %d: %s", wGet.Code, wGet.Body.String())
+	}
+
+	var getResp struct {
+		Success bool                         `json:"success"`
+		Data    model.ContainerConfigDetails `json:"data"`
+	}
+	if err := json.Unmarshal(wGet.Body.Bytes(), &getResp); err != nil {
+		t.Fatalf("failed to decode get config: %v", err)
+	}
+	if !getResp.Success || getResp.Data.Name != "demo-box" || getResp.Data.Memory != "512M" || getResp.Data.Net != "nat" {
+		t.Fatalf("unexpected get config result: %+v", getResp.Data)
+	}
+	if !getResp.Data.RunAtBoot || getResp.Data.RunAtBootPriority != 5 {
+		t.Fatalf("unexpected boot settings: %+v", getResp.Data)
+	}
+
+	// 4. PUT /api/containers/demo-box/config with updates
+	updateReq := model.UpdateConfigRequest{
+		Hostname:          "renamed-host",
+		Net:               "host",
+		Memory:            "1G",
+		CPUs:              "4",
+		Port:              []string{"9090:90/tcp"},
+		DNS:               "1.1.1.1",
+		AllowSwap:         true,
+		AndroidStorage:    true,
+		GPU:               true,
+		RunAtBoot:         true,
+		RunAtBootPriority: 10,
+		CustomInit:        "/bin/bash",
+		EnvVars:           []string{"FOO=bar", "BAZ=qux"},
+		Binds:             []string{"/sdcard:/sdcard"},
+	}
+	wPut := doRequest(h, token, "PUT", "/api/containers/demo-box/config", updateReq)
+	if wPut.Code != http.StatusOK {
+		t.Fatalf("expected 200 updating container config, got %d: %s", wPut.Code, wPut.Body.String())
+	}
+
+	// 5. GET /api/containers/demo-box/config again and verify changes
+	wGet2 := doRequest(h, token, "GET", "/api/containers/demo-box/config", nil)
+	if wGet2.Code != http.StatusOK {
+		t.Fatalf("expected 200 for second GET config, got %d", wGet2.Code)
+	}
+	var getResp2 struct {
+		Success bool                         `json:"success"`
+		Data    model.ContainerConfigDetails `json:"data"`
+	}
+	if err := json.Unmarshal(wGet2.Body.Bytes(), &getResp2); err != nil {
+		t.Fatalf("failed to decode second get config: %v", err)
+	}
+	if getResp2.Data.Hostname != "renamed-host" || getResp2.Data.Memory != "1G" || getResp2.Data.Net != "host" {
+		t.Fatalf("config update did not persist correctly: %+v", getResp2.Data)
+	}
+	if !getResp2.Data.AllowSwap || !getResp2.Data.GPU || getResp2.Data.RunAtBootPriority != 10 {
+		t.Fatalf("flags update did not persist correctly: %+v", getResp2.Data)
+	}
+	if len(getResp2.Data.EnvVars) != 2 || getResp2.Data.EnvVars[0] != "FOO=bar" {
+		t.Fatalf("env vars did not persist correctly: %+v", getResp2.Data.EnvVars)
+	}
+
+	// 6. Test invalid method and bad JSON
+	wMethod := doRequest(h, token, "DELETE", "/api/containers/demo-box/config", nil)
+	if wMethod.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 for DELETE config, got %d", wMethod.Code)
+	}
+	reqBad := httptest.NewRequest("PUT", "/api/containers/demo-box/config", bytes.NewBuffer([]byte("{invalid-json")))
+	reqBad.Header.Set("Authorization", "Bearer "+token)
+	wBad := httptest.NewRecorder()
+	h.ServeHTTP(wBad, reqBad)
+	if wBad.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for malformed json in PUT config, got %d", wBad.Code)
+	}
+}

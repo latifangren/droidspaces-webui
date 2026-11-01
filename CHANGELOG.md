@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Target: ARM64 (`aarch64`), statically linked with Musl C libc.
 
 ### Added
+- **Interactive Container Configuration Editing**:
+  - Added REST API endpoints `GET /api/containers/{name}/config` and `PUT /api/containers/{name}/config` for structured inspection and updating of container settings.
+  - Implemented `GetContainerConfigDetails` and `UpdateContainerConfig` with atomic persistence, automatic `container.env` syncing, and cache invalidation.
+  - Added `EditModal.svelte` featuring a 5-tab Neo-Brutalist editor for Resources, Network, Display & Hardware, System & Boot, and Advanced Options.
+  - Added immediate restart support (`restart_now`) for running containers with dual action buttons ("Save Changes" and "Save & Restart").
+  - Integrated Edit triggers in `Containers.svelte` action bar (`Sliders` icon) and `DetailModal.svelte` specs tab.
+- **Complete 34-Probe Kernel Diagnostics Alignment**:
+  - Expanded `/api/check` JSON parser and human-readable descriptions to match all 34 upstream Droidspaces probes, adding `epoll`, `signalfd`, `devtmpfs`, and `fuse`.
+  - Added live kernel capability gating warnings inside `EditModal.svelte` (`cfs_bandwidth`, `memcg`, `user_ns`, `macvlan`, and `swap_limit`).
 - **Machine-Readable JSON Flags (`--json`) with Backward Compatibility**:
   - Migrated `show`, `info`, and `check` commands to `--json` with adaptive fallback to `--format` for older binaries.
 - **Host Swap Isolation Controls (`--allow-swap`)**:
@@ -36,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Initial dashboard load time reduced by >70%.
 
 ### Fixed
+- **Network Mode Configuration Key Synchronization**: Fixed container network mode inspection in `client.go` to prioritize upstream `net_mode` before falling back to legacy `net`, preventing `gateway`, `macvlan`, or `host` modes from defaulting to `nat` when read from disk.
 - **RootFS Delete Path Traversal (CWE-22)**: Hardened `DeleteTemplate` with strict regex and `filepath.Base` validation.
 - **Version Alignment**: Updated WebUI AppSidebar badge to `v7.1.0`, Settings runtime to `Droidspaces v7.1.0`, and `module.prop` to `v7.1.0` (`7100`).
 - **CLI Exec Strict Order Fix**: Fixed argument order in `execContext` so `-u <user>` precedes `run`, preventing "Failed to execute command: No such file or directory" when running commands as non-root users.
