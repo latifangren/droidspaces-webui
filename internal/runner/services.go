@@ -44,6 +44,10 @@ func (c *Client) DetectInitSystem(name string) string {
 				c.setInitSysCache(name, "procd")
 				return "procd"
 			}
+			if _, err := os.Stat(filepath.Join(rootfs, "etc/runit")); err == nil {
+				c.setInitSysCache(name, "runit")
+				return "runit"
+			}
 			if _, err := os.Stat(filepath.Join(rootfs, "etc/init.d")); err == nil {
 				c.setInitSysCache(name, "openrc")
 				return "openrc"
@@ -55,6 +59,7 @@ func (c *Client) DetectInitSystem(name string) string {
 	checkCmd := "if [ -d /run/systemd/system ]; then echo systemd; " +
 		"elif [ -d /run/openrc ] || [ -f /etc/init.d/openrc ] || [ -x /sbin/rc-service ]; then echo openrc; " +
 		"elif [ -f /etc/openwrt_release ] || [ -x /sbin/procd ]; then echo procd; " +
+		"elif [ -d /run/runit ] || command -v sv >/dev/null 2>&1; then echo runit; " +
 		"elif command -v systemctl >/dev/null 2>&1; then echo systemd; " +
 		"elif [ -d /etc/init.d ]; then echo openrc; " +
 		"else echo unknown; fi"
@@ -63,7 +68,7 @@ func (c *Client) DetectInitSystem(name string) string {
 	if err == nil {
 		res := strings.TrimSpace(out)
 		switch res {
-		case "systemd", "openrc", "procd":
+		case "systemd", "openrc", "procd", "runit":
 			c.setInitSysCache(name, res)
 			return res
 		}
@@ -198,6 +203,65 @@ func (c *Client) ListServices(name string) ([]model.ServiceInfo, string, error) 
 			}
 		}
 
+	case "runit":
+		runitCmd := `for d in /etc/service /service /var/service /run/runit/service; do
+			if [ -d "$d" ]; then
+				for p in "$d"/*; do
+					[ -d "$p" ] || continue
+					sname=$(basename "$p")
+					st=$(SVDIR="$d" sv status "$sname" 2>/dev/null)
+					state="inactive"
+					case "$st" in run:*) state="running" ;; esac
+					boot="enabled"
+					[ -f "$p/down" ] && boot="disabled"
+					echo "SVC|$sname|$state|$boot|$st"
+				done
+				break
+			fi
+		done
+		for d in /etc/sv /etc/runit/sv /usr/local/etc/sv; do
+			if [ -d "$d" ]; then
+				for p in "$d"/*; do
+					[ -d "$p" ] || continue
+					echo "INSTALLED|$(basename "$p")"
+				done
+				break
+			fi
+		done`
+		if out, err := c.Exec(name, runitCmd, ""); err == nil {
+			scanner := bufio.NewScanner(strings.NewReader(out))
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if strings.HasPrefix(line, "SVC|") {
+					parts := strings.Split(line, "|")
+					if len(parts) >= 4 {
+						sname := parts[1]
+						state := parts[2]
+						enabled := parts[3]
+						desc := ""
+						if len(parts) >= 5 {
+							desc = parts[4]
+						}
+						serviceMap[sname] = &model.ServiceInfo{
+							Name:        sname,
+							State:       state,
+							Enabled:     enabled,
+							Description: desc,
+						}
+					}
+				} else if strings.HasPrefix(line, "INSTALLED|") {
+					sname := strings.TrimPrefix(line, "INSTALLED|")
+					if _, exists := serviceMap[sname]; !exists && sname != "" {
+						serviceMap[sname] = &model.ServiceInfo{
+							Name:    sname,
+							State:   "inactive",
+							Enabled: "disabled",
+						}
+					}
+				}
+			}
+		}
+
 	default:
 		listCmd := "ls -1 /etc/init.d 2>/dev/null"
 		if out, err := c.Exec(name, listCmd, ""); err == nil {
@@ -271,6 +335,39 @@ func (c *Client) ManageService(name, action, service string) error {
 		default:
 			return fmt.Errorf("action %s not supported on procd", action)
 		}
+	case "runit":
+		switch action {
+		case "start":
+			cmd = fmt.Sprintf("sv up %s", service)
+		case "stop":
+			cmd = fmt.Sprintf("sv down %s", service)
+		case "restart":
+			cmd = fmt.Sprintf("sv restart %s", service)
+		case "reload":
+			cmd = fmt.Sprintf("sv reload %s", service)
+		case "enable":
+			cmd = fmt.Sprintf(`for ad in /etc/service /service /var/service /run/runit/service; do
+				if [ -d "$ad" ]; then
+					for sd in /etc/sv /etc/runit/sv /usr/local/etc/sv; do
+						if [ -d "$sd/%s" ]; then
+							ln -sfn "$sd/%s" "$ad/%s"
+							rm -f "$ad/%s/down" 2>/dev/null
+							break 2
+						fi
+					done
+				fi
+			done`, service, service, service, service)
+		case "disable":
+			cmd = fmt.Sprintf(`for ad in /etc/service /service /var/service /run/runit/service; do
+				if [ -L "$ad/%s" ] || [ -e "$ad/%s" ]; then
+					sv down "$ad/%s" 2>/dev/null
+					rm -f "$ad/%s"
+					break
+				fi
+			done`, service, service, service, service)
+		default:
+			return fmt.Errorf("action %s not supported on runit", action)
+		}
 	default:
 		cmd = fmt.Sprintf("/etc/init.d/%s %s", service, action)
 	}
@@ -292,6 +389,13 @@ func (c *Client) GetServiceJournal(name, service string, lines int) (string, err
 	var cmd string
 	if initSys == "systemd" {
 		cmd = fmt.Sprintf("journalctl -u %s -n %d --no-pager 2>/dev/null", service, lines)
+	} else if initSys == "runit" {
+		cmd = fmt.Sprintf(`(for d in /etc/service /service /var/service /run/runit/service; do
+			if [ -d "$d/%s/log/main" ]; then
+				tail -n %d "$d/%s/log/main/current" 2>/dev/null
+				exit 0
+			fi
+		done) || grep -i '%s' /var/log/messages 2>/dev/null | tail -n %d || grep -i '%s' /var/log/syslog 2>/dev/null | tail -n %d || dmesg | tail -n %d`, service, lines, service, service, lines, service, lines, lines)
 	} else {
 		cmd = fmt.Sprintf("grep -i '%s' /var/log/messages 2>/dev/null | tail -n %d || grep -i '%s' /var/log/syslog 2>/dev/null | tail -n %d || dmesg | tail -n %d", service, lines, service, lines, lines)
 	}

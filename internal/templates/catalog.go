@@ -63,7 +63,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.3-aarch64.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      4,
-		Description: "[SERVER / HEADLESS] Ultra-lightweight ~4MB! Sub-second boot, minimal RAM (<20MB). Designed for microservices, background workers, and Docker engine. Pure CLI, zero GUI overhead.",
+		Description: "[VANILLA / LXC] Ultra-lightweight ~4MB! Sub-second boot, minimal RAM (<20MB). Pure CLI, zero GUI overhead.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "debian-12",
@@ -78,7 +79,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/20261007_05:24/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      95,
-		Description: "[SERVER / HEADLESS] Homelab standard with full systemd PID 1 support. Rock-solid stability for containers, databases, and Docker. (XFCE desktop can be installed via apt).",
+		Description: "[VANILLA / LXC] Homelab standard with full systemd PID 1 support. Rock-solid stability for containers, databases, and Docker.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "ubuntu-24.04",
@@ -93,7 +95,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://images.linuxcontainers.org/images/ubuntu/noble/arm64/default/20261007_07:42/rootfs.tar.xz",
 		Type:        "tar.xz",
 		SizeMB:      115,
-		Description: "[SERVER / HEADLESS] Latest LTS server with modern packages, Python 3.12, systemd, and broad toolchain. Pure headless without graphical memory footprint.",
+		Description: "[VANILLA / LXC] Latest LTS server with modern packages, Python 3.12, systemd, and broad toolchain.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "arch-linux",
@@ -108,7 +111,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      420,
-		Description: "[SERVER / HEADLESS] Rolling-release distribution with pacman package manager. Bleeding-edge packages for advanced developers. Default headless CLI.",
+		Description: "[VANILLA / LXC] Rolling-release distribution with pacman package manager. Bleeding-edge packages for advanced developers.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "openwrt-23.05",
@@ -123,7 +127,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://downloads.openwrt.org/releases/23.05.5/targets/armsr/armv8/openwrt-23.05.5-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      25,
-		Description: "[STABLE LTS - KERNEL 4.19+] Battle-tested long-term support release for all Android 10+ devices. Highest stability, lowest RAM footprint (<30 MB), LuCI Web UI on port 80.",
+		Description: "[VANILLA / LXC - KERNEL 4.19+] Battle-tested long-term support release. Low RAM footprint, LuCI Web UI on port 80.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "openwrt-24.10",
@@ -138,7 +143,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://downloads.openwrt.org/releases/24.10.0/targets/armsr/armv8/openwrt-24.10.0-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      25,
-		Description: "[MODERN STABLE - KERNEL 5.10+] Updated stack with musl 1.2.5 and fw4 nftables. High stability on Android 12+ GKI devices. Fast routing and LuCI Web UI.",
+		Description: "[VANILLA / LXC - KERNEL 5.10+] Updated stack with musl 1.2.5 and fw4 nftables. High stability on Android 12+ GKI devices.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "openwrt-25.12",
@@ -153,7 +159,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://downloads.openwrt.org/releases/25.12.0/targets/armsr/armv8/openwrt-25.12.0-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      28,
-		Description: "[EXPERIMENTAL - KERNEL 5.15+] Bleeding-edge Next-Gen release with latest toolchain. Recommended for modern GKI devices and power users seeking newest packages.",
+		Description: "[VANILLA / LXC - KERNEL 5.15+] Bleeding-edge Next-Gen release with latest toolchain.",
+		Origin:      "vanilla",
 	},
 	{
 		ID:          "immortalwrt-24.10",
@@ -168,7 +175,8 @@ var defaultCatalog = []model.TemplateInfo{
 		URL:         "https://downloads.immortalwrt.org/releases/24.10.0/targets/armsr/armv8/immortalwrt-24.10.0-armsr-armv8-rootfs.tar.gz",
 		Type:        "tar.gz",
 		SizeMB:      45,
-		Description: "[FEATURE RICH - KERNEL 5.4+] Popular OpenWrt fork with extensive pre-bundled package feeds, enhanced network tools, and optimized LuCI UI. Highly stable on kernel 5.4+.",
+		Description: "[VANILLA / LXC - KERNEL 5.4+] Popular OpenWrt fork with extensive pre-bundled package feeds.",
+		Origin:      "vanilla",
 	},
 }
 
@@ -193,8 +201,12 @@ func GetStorageDir() string {
 
 func ListTemplates() []model.TemplateInfo {
 	storage := GetStorageDir()
-	res := make([]model.TemplateInfo, len(defaultCatalog))
-	copy(res, defaultCatalog)
+
+	// Hybrid Mode: Combine official pre-configured Droidspaces rootfs with vanilla LXC templates
+	officialList := GetOfficialTemplates()
+	res := make([]model.TemplateInfo, 0, len(officialList)+len(defaultCatalog))
+	res = append(res, officialList...)
+	res = append(res, defaultCatalog...)
 
 	matchedPaths := make(map[string]bool)
 
@@ -499,6 +511,22 @@ func setJobError(errMsg string) {
 	downloadLock.Unlock()
 }
 
+func findTemplate(templateID string) *model.TemplateInfo {
+	for _, item := range GetOfficialTemplates() {
+		if item.ID == templateID {
+			cpy := item
+			return &cpy
+		}
+	}
+	for _, item := range defaultCatalog {
+		if item.ID == templateID {
+			cpy := item
+			return &cpy
+		}
+	}
+	return nil
+}
+
 func StartDownload(templateID string) error {
 	downloadLock.Lock()
 	if activeJob != "" {
@@ -510,13 +538,7 @@ func StartDownload(templateID string) error {
 	jobError = ""
 	downloadLock.Unlock()
 
-	var t *model.TemplateInfo
-	for _, item := range defaultCatalog {
-		if item.ID == templateID {
-			t = &item
-			break
-		}
-	}
+	t := findTemplate(templateID)
 	if t == nil {
 		downloadLock.Lock()
 		activeJob = ""
@@ -603,6 +625,17 @@ func StartDownload(templateID string) error {
 				return
 			}
 			out.Close()
+
+		if t.SHA256 != "" {
+			downloadLock.Lock()
+			jobProgress = "Verifying SHA-256 integrity..."
+			downloadLock.Unlock()
+			if err := verifySHA256(tmpArchive, t.SHA256); err != nil {
+				_ = os.Remove(tmpArchive)
+				setJobError(fmt.Sprintf("integrity verification failed: %v", err))
+				return
+			}
+		}
 
 		log.Printf("[templates] Download complete for %s, extracting to %s", t.ID, targetDir)
 

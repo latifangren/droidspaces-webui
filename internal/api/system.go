@@ -126,6 +126,7 @@ func buildKernelCheckResultFromJSON(raw map[string]interface{}) model.KernelChec
 		{"cgroup_ns", "Cgroup Namespace", "Isolates container cgroup view (CLONE_NEWCGROUP)", "Kernel CONFIG_CGROUP_NET_PRIO=y", false},
 		{"user_ns", "User Namespace (Docker)", "Enables rootless Docker and nested containers", "Kernel CONFIG_USER_NS=y", false},
 		{"seccomp", "Seccomp BPF Filter", "Filters dangerous syscalls inside containers", "Kernel CONFIG_SECCOMP=y", false},
+		{"mount_api", "New Mount API (systemd 259+)", "fsopen() and 5.2 mount API, or Seccomp fallback shim", "Kernel 5.2+ or Seccomp shim", false},
 		{"overlayfs", "OverlayFS Driver", "Required for Docker overlay2 storage and volatile mode", "Kernel CONFIG_OVERLAY_FS=y", false},
 	}
 
@@ -140,6 +141,7 @@ func buildKernelCheckResultFromJSON(raw map[string]interface{}) model.KernelChec
 
 	cgroupItems := []itemDef{
 		{"memory_limit", "Memory Limit Controller", "Restricts maximum container RAM quota", "Kernel CONFIG_MEMCG=y", false},
+		{"swap_limit", "Swap Limit Controller", "Per-cgroup swap tracking and host swap isolation", "Kernel CONFIG_MEMCG_SWAP=y", false},
 		{"cpu_limit", "CPU Bandwidth Quota", "Restricts container CPU execution percentage", "Kernel CONFIG_CFS_BANDWIDTH=y", false},
 		{"cpu_accounting", "CPU Usage Accounting", "Real-time container CPU load & stat tracking", "Kernel CONFIG_CGROUP_CPUACCT=y", false},
 		{"pids_limit", "Process Number Limit", "Guards against fork bombs (max PID count)", "Kernel CONFIG_CGROUP_PIDS=y", false},
@@ -346,6 +348,10 @@ func getHumanFeatureDesc(name string) string {
 		return "Virtual Ethernet peer tunnels available for container networking."
 	case "Memory limit support":
 		return "Kernel memory controller ready for RAM throttling."
+	case "Swap limit support":
+		return "Kernel swap accounting ready for swap memory quotas."
+	case "New mount API":
+		return "Kernel 5.2 fsopen() mount API available (or graceful Seccomp EPERM fallback for systemd 259+)."
 	case "CPU limit support":
 		return "CFS bandwidth quota not set in kernel. Containers run with full, unthrottled access across all CPU cores."
 	case "Sandboxing (user namespaces)":

@@ -1,8 +1,9 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import {
     DownloadCloud,
     CheckCircle,
+    Package,
     Play,
     Loader2,
     Layers,
@@ -16,12 +17,18 @@
     AlertTriangle,
     X,
     Code,
+    Smartphone,
+    ExternalLink,
   } from 'lucide-svelte';
 
   export let onNavigate: (route: string, data?: any) => void;
+  export let containersData: any = { running: [], stopped: [] };
 
-  let activeTab = 'all'; // 'all' | 'server' | 'network' | 'blueprints'
+  let activeTab = 'all'; // 'all' | 'desktop' | 'server' | 'network' | 'blueprints' | 'apps'
+  let sourceFilter = 'all'; // 'all' | 'official' | 'vanilla'
+  let appFilter = 'all';
   let templates: any[] = [];
+  let appPresets: any[] = [];
   let activeJob = '';
   let progress = '';
   let lastError = '';
@@ -95,14 +102,34 @@
       distroReq: 'openwrt-23.05',
       command: 'opkg update && opkg install luci wireguard-tools',
     },
+    {
+      id: 'android-bridge-companion',
+      name: 'Android Host Bridge (ADB-Style Control)',
+      category: 'Hardware Integration',
+      targetEnv: 'Host Integration',
+      icon: Smartphone,
+      color: 'bg-amber-400 text-black',
+      desc: 'Allows root inside the container to execute host Android commands (dumpsys battery, reboot, pm, am) like ADB shell without USB or wireless ADB. Requires flashing the android-bridge Magisk/KernelSU module and bind-mounting /dev/android-bridge:/run/android-bridge:ro.',
+      ram: '128 MB',
+      ports: 'UNIX Socket (/dev/android-bridge)',
+      distroReq: 'debian-12',
+      command: 'echo "Mount -b /dev/android-bridge:/run/android-bridge:ro then run: android-bridge dumpsys battery"',
+      externalUrl: 'https://github.com/ravindu644/android-bridge',
+    },
   ];
 
   $: filteredDistros = (() => {
-    if (activeTab === 'all') return templates;
-    if (activeTab === 'server') return templates.filter((t) => t.category === 'server');
-    if (activeTab === 'network') return templates.filter((t) => t.category === 'network');
+    let list = templates;
+    if (sourceFilter === 'official') list = list.filter((t) => t.origin === 'official');
+    else if (sourceFilter === 'vanilla') list = list.filter((t) => t.origin === 'vanilla');
+
+    if (activeTab === 'all') return list;
+    if (activeTab === 'desktop') return list.filter((t) => t.category === 'desktop');
+    if (activeTab === 'server') return list.filter((t) => t.category === 'server');
+    if (activeTab === 'network') return list.filter((t) => t.category === 'network');
     return [];
   })();
+  $: filteredApps = appFilter === 'all' ? appPresets : appPresets.filter((app) => app.category === appFilter);
 
   async function loadTemplates() {
     try {
@@ -110,6 +137,7 @@
       const json = await res.json();
       if (json.success && json.data) {
         templates = json.data.templates || [];
+        appPresets = json.data.apps || [];
         activeJob = json.data.active_job || '';
         progress = json.data.progress || '';
         if (json.data.last_error) {
@@ -166,6 +194,39 @@
     }
   }
 
+  function launchAppPreset(app: any) {
+    const rootfsTemplate = templates.find((item) => item.id === app.required_rootfs_id && item.installed);
+    if (!rootfsTemplate) {
+      toast.error(`Install ${app.required_rootfs_id} from the RootFS Store before deploying this app.`);
+      return;
+    }
+    const request = app.start_request || {};
+    const baseName = app.default_name || request.name || app.id;
+    const usedNames = [
+      ...(containersData?.running || []),
+      ...(containersData?.stopped || []),
+    ].map((container: any) => (container.name || '').toLowerCase());
+    let name = baseName;
+    let suffix = 1;
+    while (usedNames.includes(name.toLowerCase())) {
+      name = `${app.id}-${String(suffix++).padStart(2, '0')}`;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      toast.error('Preset has an invalid default container name.');
+      return;
+    }
+
+    const rootfsPath = rootfsTemplate.local_path || `${storageDir}/${rootfsTemplate.id}`;
+    onNavigate('containers', {
+      ...request,
+      name,
+      rootfs: rootfsTemplate.type === 'img' ? undefined : rootfsPath,
+      rootfs_img: rootfsTemplate.type === 'img' ? rootfsPath : undefined,
+      id: rootfsTemplate.id,
+      marketplace_app_id: app.id,
+    });
+  }
+
   function launchDistro(t: any) {
     const rootfsPath = t.local_path || (storageDir ? `${storageDir}/${t.id}` : '');
     onNavigate('containers', {
@@ -197,6 +258,7 @@
       memory: ramDigits ? `${ramDigits}M` : '',
       ports: portsVal,
       allow_sandboxing: bp.id.includes('docker'),
+      custom_binds: bp.id.includes('android-bridge') ? '/dev/android-bridge:/run/android-bridge:ro' : undefined,
     });
   }
 
@@ -231,13 +293,23 @@
       </button>
 
       <button
+        on:click={() => (activeTab = 'desktop')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'desktop'
+          ? 'bg-pink text-white'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Monitor size={12} />
+        <span>Desktop GUI</span>
+      </button>
+
+      <button
         on:click={() => (activeTab = 'server')}
         class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'server'
           ? 'bg-cyan text-black'
           : 'text-muted hover:text-ink'}"
       >
         <Server size={12} />
-        <span>Server (Headless)</span>
+        <span>Server (CLI)</span>
       </button>
 
       <button
@@ -248,6 +320,16 @@
       >
         <Shield size={12} />
         <span>Network Appliance</span>
+      </button>
+
+      <button
+        on:click={() => (activeTab = 'apps')}
+        class="px-2.5 py-1 rounded transition text-xs font-black uppercase tracking-wider flex items-center gap-1 {activeTab === 'apps'
+          ? 'bg-purple text-black'
+          : 'text-muted hover:text-ink'}"
+      >
+        <Layers size={12} />
+        <span>Apps</span>
       </button>
 
       <button
@@ -262,38 +344,80 @@
     </div>
   </div>
 
-  <!-- Educational Guide Box: Server vs Desktop -->
-  <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal flex flex-col md:flex-row gap-4">
-    <div class="flex items-start gap-3 flex-1">
+  <!-- Source Filter (Hybrid Mode) -->
+  {#if activeTab === 'all' || activeTab === 'desktop' || activeTab === 'server' || activeTab === 'network'}
+    <div class="flex items-center gap-2 flex-wrap text-xs">
+      <span class="text-[11px] font-bold uppercase tracking-wider text-muted font-mono">Catalog Source:</span>
+      <div class="inline-flex rounded-lg border-2 border-line bg-paper p-0.5 shadow-brutal-sm gap-1">
+        <button
+          on:click={() => (sourceFilter = 'all')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition {sourceFilter === 'all'
+            ? 'bg-ink text-paper'
+            : 'text-muted hover:text-ink'}"
+        >
+          All Sources
+        </button>
+        <button
+          on:click={() => (sourceFilter = 'official')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition flex items-center gap-1 {sourceFilter === 'official'
+            ? 'bg-amber-400 text-black'
+            : 'text-muted hover:text-ink'}"
+        >
+          <Sparkles size={11} />
+          <span>Official Droidspaces (Android Ready)</span>
+        </button>
+        <button
+          on:click={() => (sourceFilter = 'vanilla')}
+          class="px-2.5 py-0.5 rounded font-black text-[11px] uppercase tracking-wider transition {sourceFilter === 'vanilla'
+            ? 'bg-cyan text-black'
+            : 'text-muted hover:text-ink'}"
+        >
+          Vanilla Minimal (LXC)
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Educational Guide Box: Official vs Vanilla vs Desktop -->
+  <div class="p-4 rounded-xl border-2 border-line bg-paper shadow-brutal grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="flex items-start gap-3">
+      <div class="p-2 rounded-lg bg-amber-400 text-black border border-line shrink-0">
+        <Sparkles size={18} />
+      </div>
+      <div class="space-y-1">
+        <div class="text-xs font-black uppercase text-ink">
+          Official Droidspaces RootFS
+        </div>
+        <p class="text-[11px] text-muted leading-relaxed">
+          Pre-built & tuned specifically for <strong>Android Linux kernels</strong>. Includes <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">aid_inet (3003)</code> socket permissions, touch-friendly XFCE/bspwm desktops, pre-installed Docker, and OpenWrt with <strong>iptables-legacy + fw3</strong> to avoid Android kernel nftables lockups.
+        </p>
+      </div>
+    </div>
+
+    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-cyan text-black border border-line shrink-0">
         <Server size={18} />
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Headless Server Distros (Debian, Ubuntu, Alpine, Arch)
+          Vanilla Minimal (LXC)
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          All base distributions below are <strong>Headless Servers (pure CLI without GUI)</strong>.
-          Extremely lightweight, battery friendly, and sub-second boot (RAM 20MB - 200MB). Controlled via
-          <strong>Web Console</strong>, <strong>SSH</strong>, or <strong>WebUI</strong>. Ideal for
-          Docker, microservices, databases, and background farming nodes.
+          Raw upstream LinuxContainers rootfs images (~4MB Alpine, ~95MB Debian). Pure minimal CLI with sub-second boot, sub-20MB RAM, zero bloat. Ideal for custom services, microservices, and developers building from scratch.
         </p>
       </div>
     </div>
 
-    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3 flex-1">
+    <div class="border-t-2 md:border-t-0 md:border-l-2 border-line pt-3 md:pt-0 md:pl-4 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-pink text-white border border-line shrink-0">
         <Monitor size={18} />
       </div>
       <div class="space-y-1">
         <div class="text-xs font-black uppercase text-ink">
-          Need a Graphical Desktop GUI (XFCE)?
+          Desktop GUI (XFCE / bspwm)
         </div>
         <p class="text-[11px] text-muted leading-relaxed">
-          Deploy <strong>Debian 12</strong> or <strong>Ubuntu 24.04</strong>. Inside <em>Web Console</em>,
-          run:
-          <code class="px-1.5 py-0.5 rounded bg-panel-alt border border-line font-mono text-[10px] text-ink">apt install -y xfce4 xfce4-goodies</code>.
-          Toggle the <strong>Termux:X11</strong> flag in the Hardware tab to render the desktop display directly to phone screen via Termux-X11 app!
+          Official images with <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">XFCE</code> or <code class="px-1 py-0.2 rounded bg-panel-alt border border-line font-mono text-[10px]">bspwm</code> are ready to display on your Android screen. Simply launch the <strong>Termux-X11</strong> companion app or configure VNC/RDP to get a full touch workstation!
         </p>
       </div>
     </div>
@@ -334,7 +458,63 @@
     </div>
   {/if}
 
-  {#if activeTab !== 'blueprints'}
+  {#if activeTab === 'apps'}
+    <div class="space-y-4">
+      <div class="flex gap-2 flex-wrap">
+        {#each [{ id: 'all', label: 'All Apps' }, { id: 'server', label: 'Server' }, { id: 'network', label: 'Network' }, { id: 'automation', label: 'Automation' }] as category}
+          <button
+            type="button"
+            on:click={() => (appFilter = category.id)}
+            class="px-3 py-1.5 rounded border-2 border-line text-[10px] font-black uppercase {appFilter === category.id ? 'bg-ink text-paper' : 'bg-panel text-muted'}"
+          >
+            {category.label}
+          </button>
+        {/each}
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {#each filteredApps as app}
+          {@const rootfsTemplate = templates.find((item) => item.id === app.required_rootfs_id && item.installed)}
+          {@const appNameExists = [...(containersData?.running || []), ...(containersData?.stopped || [])].some((container: any) => (container.name || '').toLowerCase() === (app.default_name || '').toLowerCase())}
+          <div class="p-5 card-brutal flex flex-col justify-between gap-4">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <span class="badge-brutal {app.category === 'network' ? 'bg-lime text-black' : app.category === 'automation' ? 'bg-purple text-black' : 'bg-cyan text-black'}">{app.category}</span>
+                <span class="text-[10px] font-mono text-muted">{app.start_request?.memory || 'No RAM limit'}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <Package size={18} />
+                <h3 class="text-base font-black uppercase text-ink">{app.name}</h3>
+              </div>
+              <p class="text-xs text-muted leading-relaxed">{app.description}</p>
+              <div class="text-[10px] font-mono text-muted">RootFS: {app.required_rootfs_id}</div>
+              {#if app.prerequisites?.length}
+                <ul class="list-disc pl-4 space-y-1 text-[10px] text-muted">
+                  {#each app.prerequisites as prerequisite}
+                    <li>{prerequisite}</li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if app.post_setup_note}
+                <p class="rounded border border-line bg-panel-alt p-2 text-[10px] text-ink">{app.post_setup_note}</p>
+              {/if}
+            </div>
+            <div class="pt-3 border-t-2 border-line flex items-center justify-between gap-2">
+              <span class="text-[10px] font-mono font-bold {rootfsTemplate ? 'text-lime' : 'text-orange'}">
+                {rootfsTemplate ? (appNameExists ? 'Container name in use' : 'Ready to deploy') : 'RootFS required'}
+              </span>
+              {#if !rootfsTemplate}
+                <button type="button" on:click={() => { activeTab = 'all'; }} class="btn-brutal !py-1.5 !px-3">Open RootFS Store</button>
+              {:else}
+                <button type="button" on:click={() => launchAppPreset(app)} class="btn-brutal btn-brutal-primary !py-1.5 !px-3">
+                  <span>Deploy</span><Play size={12} />
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {:else if activeTab !== 'blueprints'}
     <!-- Distribution Catalog Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each filteredDistros as t}
@@ -345,17 +525,34 @@
           <div class="space-y-2.5">
             <!-- Header Badges -->
             <div class="flex items-center justify-between gap-2 flex-wrap">
-              <span class="badge-brutal bg-primary text-primary-text font-black">
-                {t.distro}
-              </span>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="badge-brutal bg-primary text-primary-text font-black">
+                  {t.distro}
+                </span>
+                {#if t.origin === 'official'}
+                  <span class="badge-brutal bg-amber-400 text-black font-black text-[9px] flex items-center gap-1">
+                    <Sparkles size={10} /> Official Droidspaces
+                  </span>
+                {:else if t.origin === 'vanilla'}
+                  <span class="badge-brutal bg-panel-alt text-muted font-bold text-[9px]">
+                    Vanilla LXC
+                  </span>
+                {/if}
+              </div>
 
               <div class="flex items-center gap-1.5">
                 <span
                   class="badge-brutal text-[9px] font-black uppercase {t.category === 'network'
                     ? 'bg-lime text-black'
+                    : t.category === 'desktop'
+                    ? 'bg-pink text-white'
                     : 'bg-cyan text-black'}"
                 >
-                  {t.category === 'network' ? 'NETWORK ROUTER' : 'SERVER / CLI'}
+                  {t.category === 'network'
+                    ? 'NETWORK ROUTER'
+                    : t.category === 'desktop'
+                    ? 'DESKTOP GUI'
+                    : 'SERVER / CLI'}
                 </span>
                 <span class="text-[10px] font-mono text-muted font-bold">{t.size_mb} MB</span>
               </div>
@@ -364,7 +561,11 @@
             <!-- Title & Subtitle -->
             <div>
               <h3 class="text-base font-black text-ink uppercase">{t.name}</h3>
-              <div class="text-[10px] font-mono font-bold text-muted mt-0.5 flex items-center gap-2">
+              <div class="text-[10px] font-mono font-bold text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+                {#if t.environment}
+                  <span class="text-ink font-semibold">{t.environment}</span>
+                  <span>•</span>
+                {/if}
                 <span>Init: {t.init_system || 'systemd'}</span>
                 <span>•</span>
                 <span>Min RAM: {t.min_ram || '256 MB'}</span>
@@ -462,13 +663,27 @@
 
           <div class="pt-3 border-t-2 border-line flex items-center justify-between">
             <span class="text-[11px] text-muted font-mono font-bold">Port: {bp.ports}</span>
-            <button
-              on:click={() => launchBlueprint(bp)}
-              class="btn-brutal btn-brutal-primary !py-1.5 !px-3"
-            >
-              <span>Deploy</span>
-              <Play size={12} />
-            </button>
+            <div class="flex items-center gap-2">
+              {#if bp.externalUrl}
+                <a
+                  href={bp.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn-brutal !py-1.5 !px-2.5 text-xs inline-flex items-center gap-1 font-bold"
+                  title="View GitHub Documentation"
+                >
+                  <ExternalLink size={12} />
+                  <span>Module</span>
+                </a>
+              {/if}
+              <button
+                on:click={() => launchBlueprint(bp)}
+                class="btn-brutal btn-brutal-primary !py-1.5 !px-3"
+              >
+                <span>Deploy</span>
+                <Play size={12} />
+              </button>
+            </div>
           </div>
         </div>
       {/each}

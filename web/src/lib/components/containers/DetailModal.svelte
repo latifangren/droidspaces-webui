@@ -283,6 +283,14 @@
                 </span>
               </div>
             {/if}
+            {#if container.swap_allowed}
+              <div class="p-2.5 bg-panel-alt rounded border border-line">
+                <span class="text-muted block text-[10px]">Host Swap</span>
+                <span class="font-bold text-amber-500 block text-[11px]">
+                  Allowed (--allow-swap)
+                </span>
+              </div>
+            {/if}
             <div class="p-2.5 bg-panel-alt rounded border border-line sm:col-span-3">
               <span class="text-muted block text-[10px]">RootFS Storage Path</span>
               <span class="font-bold text-ink truncate block text-[11px]">{container.rootfs_path || container.rootfs || '-'}</span>

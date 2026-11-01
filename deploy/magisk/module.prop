@@ -1,6 +1,6 @@
 id=droidspaces
 name=Droidspaces Container Engine & WebUI
-version=v7.0.0-webui
-versionCode=700
+version=v7.1.0-marketplace
+versionCode=710
 author=ravindu644 & latifangren
-description=Headless Container Engine for Android (C Musl Daemon + Svelte 5 WebUI Dashboard on port 84)
+description=Headless Container Engine for Android (C Musl Daemon + Svelte 5 WebUI Dashboard on port 84) with App Marketplace, Multi-pane Terminal, and Live Resource Graph

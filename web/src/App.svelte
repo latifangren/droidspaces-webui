@@ -92,11 +92,12 @@
       const dataStatus = await resStatus.json();
       const dataContainers = await resContainers.json();
 
+      const snapshotAt = Date.now() / 1000;
       if (dataStatus.success && dataStatus.data) {
-        statusData = dataStatus.data;
+        statusData = { ...dataStatus.data, snapshot_at: snapshotAt };
       }
       if (dataContainers.success && dataContainers.data) {
-        containersData = dataContainers.data;
+        containersData = { ...dataContainers.data, snapshot_at: snapshotAt };
       }
     } catch (e: any) {
       console.error('Failed to load WebUI data:', e);
@@ -200,7 +201,7 @@
       {:else if currentRoute === 'logs'}
         <Logs />
       {:else if currentRoute === 'templates'}
-        <Templates onNavigate={navigate} />
+        <Templates onNavigate={navigate} {containersData} />
       {:else if currentRoute === 'settings'}
         <Settings {statusData} onRefresh={loadData} {colorPalette} onSetColor={setColor} />
       {/if}

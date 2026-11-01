@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/latifangren/droidspaces-webui/internal/config"
@@ -104,9 +106,13 @@ func (c *Client) Show() (*model.ShowResult, error) {
 
 // ShowContext reads container state while honoring the caller's deadline.
 func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
-	out, err := c.runContext(ctx, "show", "--format")
+	out, err := c.runContext(ctx, "show", "--json")
 	if err != nil {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.runContext(ctx, "show", "--format")
+		if fbErr != nil {
+			return nil, err
+		}
 	}
 
 	var res model.ShowResult
@@ -164,6 +170,9 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 				if cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true" {
 					item.Anland = true
 				}
+				if !item.SwapAllowed && (cfg["allow_swap"] == "1" || cfg["allow_swap"] == "true") {
+					item.SwapAllowed = true
+				}
 			}
 			if item.RootFS != "" {
 				item.DiskSize, item.DiskSizeBytes = GetContainerDiskSize(item.RootFS)
@@ -219,6 +228,7 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 				stoppedSummary.MacvlanParent = cfg["macvlan_parent"]
 				stoppedSummary.MacvlanMode = cfg["macvlan_mode"]
 				stoppedSummary.Anland = cfg["enable_anland"] == "1" || cfg["enable_anland"] == "true"
+				stoppedSummary.SwapAllowed = cfg["allow_swap"] == "1" || cfg["allow_swap"] == "true"
 			}
 			if stoppedSummary.RootFS != "" {
 				stoppedSummary.DiskSize, stoppedSummary.DiskSizeBytes = GetContainerDiskSize(stoppedSummary.RootFS)
@@ -236,9 +246,13 @@ func (c *Client) ShowContext(ctx context.Context) (*model.ShowResult, error) {
 }
 
 func (c *Client) Info(name string) (map[string]interface{}, error) {
-	out, err := c.run("info", "--name="+name, "--format")
+	out, err := c.run("info", "--name="+name, "--json")
 	if err != nil {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.run("info", "--name="+name, "--format")
+		if fbErr != nil {
+			return nil, err
+		}
 	}
 
 	var res map[string]interface{}
@@ -429,6 +443,9 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.ForceCgroupV1 {
 		args = append(args, "--force-cgroupv1")
 	}
+	if req.AllowSwap {
+		args = append(args, "--allow-swap")
+	}
 	if req.Memory != "" {
 		args = append(args, "--memory="+req.Memory)
 	}
@@ -447,8 +464,29 @@ func (c *Client) Start(req model.StartRequest) error {
 	if req.CustomInit != "" {
 		args = append(args, "--init="+req.CustomInit)
 	}
-	for _, env := range req.EnvVars {
-		args = append(args, "-e", env)
+	if len(req.EnvVars) > 0 {
+		var sb strings.Builder
+		for _, e := range req.EnvVars {
+			trimmed := strings.TrimSpace(e)
+			if trimmed != "" {
+				sb.WriteString(trimmed)
+				sb.WriteString("\n")
+			}
+		}
+		if sb.Len() > 0 {
+			tmpFile, err := os.CreateTemp("", "ds_env_*.txt")
+			if err == nil {
+				envPath := tmpFile.Name()
+				_, writeErr := tmpFile.WriteString(sb.String())
+				closeErr := tmpFile.Close()
+				if writeErr == nil && closeErr == nil {
+					args = append(args, "-E", envPath)
+					defer os.Remove(envPath)
+				} else {
+					_ = os.Remove(envPath)
+				}
+			}
+		}
 	}
 	for _, b := range req.Binds {
 		args = append(args, "-B", b)
@@ -461,6 +499,11 @@ func (c *Client) Start(req model.StartRequest) error {
 
 	// Persist boot settings if specified
 	updates := make(map[string]string)
+	if req.AllowSwap {
+		updates["allow_swap"] = "1"
+	} else {
+		updates["allow_swap"] = "0"
+	}
 	if req.RunAtBoot {
 		updates["run_at_boot"] = "1"
 		updates["run_at_boot_priority"] = strconv.Itoa(req.RunAtBootPriority)
@@ -520,9 +563,13 @@ func (c *Client) Check() (string, error) {
 }
 
 func (c *Client) CheckFormat() (map[string]interface{}, error) {
-	out, err := c.run("check", "--format")
+	out, err := c.run("check", "--json")
 	if err != nil && len(strings.TrimSpace(out)) == 0 {
-		return nil, err
+		var fbErr error
+		out, fbErr = c.run("check", "--format")
+		if fbErr != nil && len(strings.TrimSpace(out)) == 0 {
+			return nil, err
+		}
 	}
 	var res map[string]interface{}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
@@ -537,31 +584,107 @@ func (c *Client) Scan() (string, error) {
 func (c *Client) Exec(container, command, user string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	return c.ExecContext(ctx, container, command, user)
+}
 
-	args := []string{"--name=" + container, "run"}
-	if user != "" {
+// ExecContext runs a command inside a container with a caller-controlled
+// deadline. Commands are executed through the container shell; callers that
+// accept user input must validate it and must not interpolate it into command.
+func (c *Client) ExecContext(ctx context.Context, container, command, user string) (string, error) {
+	return c.execContext(ctx, container, command, user, 0)
+}
+
+// ExecContextBounded runs a command while retaining at most maxOutput bytes of
+// combined stdout+stderr output. Marketplace setup uses this to keep
+// package-manager output from growing the daemon's memory use without changing
+// the general exec endpoint.
+func (c *Client) ExecContextBounded(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
+	if maxOutput <= 0 {
+		return "", fmt.Errorf("maximum command output must be positive")
+	}
+	return c.execContext(ctx, container, command, user, maxOutput)
+}
+
+func (c *Client) execContext(ctx context.Context, container, command, user string, maxOutput int) (string, error) {
+	// In Droidspaces CLI, sub-command 'run' runs under strict getopt parsing.
+	// Any CLI flags intended for droidspaces (such as -u/--user) must be placed
+	// BEFORE the 'run' command word; anything after 'run' is passed as the container command.
+	args := []string{"--name=" + container}
+	if user != "" && user != "root" {
 		args = append(args, "-u", user)
 	}
-	args = append(args, "sh", "-c", command)
+	args = append(args, "run", "sh", "-c", command)
 
 	cmd := exec.CommandContext(ctx, c.binPath, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	var stdoutBuf, stderrBuf bytes.Buffer
+	var boundedStdout, boundedStderr *tailBuffer
+	stdout, stderr := io.Writer(&stdoutBuf), io.Writer(&stderrBuf)
+	if maxOutput > 0 {
+		boundedStdout = &tailBuffer{max: maxOutput}
+		boundedStderr = &tailBuffer{max: maxOutput}
+		stdout, stderr = boundedStdout, boundedStderr
+	}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	err := cmd.Run()
-	output := stdout.String()
-	if stderr.Len() > 0 {
-		if output != "" {
-			output += "\n"
+	var output string
+	if maxOutput > 0 {
+		output = boundedStdout.String()
+		stderrOutput := boundedStderr.String()
+		if stderrOutput != "" {
+			if output != "" && len(output)+1+len(stderrOutput) <= maxOutput {
+				output += "\n" + stderrOutput
+			} else if output == "" && len(stderrOutput) > maxOutput {
+				output = stderrOutput[len(stderrOutput)-maxOutput:]
+			} else {
+				output = stderrOutput
+			}
 		}
-		output += stderr.String()
+		if len(output) > maxOutput {
+			output = output[len(output)-maxOutput:]
+		}
+	} else {
+		output = stdoutBuf.String()
+		if stderrBuf.Len() > 0 {
+			if output != "" {
+				output += "\n"
+			}
+			output += stderrBuf.String()
+		}
 	}
 
 	if err != nil {
 		return output, fmt.Errorf("%w: %s", err, output)
 	}
 	return output, nil
+}
+
+type tailBuffer struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(p) >= b.max {
+		b.buf = append(b.buf[:0], p[len(p)-b.max:]...)
+		return len(p), nil
+	}
+	remaining := b.max - len(p)
+	if len(b.buf) > remaining {
+		b.buf = append(b.buf[:0], b.buf[len(b.buf)-remaining:]...)
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
 }
 
 func (c *Client) findHostShell() string {

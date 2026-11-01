@@ -40,7 +40,7 @@ droidspaces-webui/
 ├── deploy/
 │   └── magisk/                     # Unified flashable module for Magisk, KernelSU, and APatch
 │       ├── bin/                    # Prebuilt ARM64 core engine binaries (self-contained repo)
-│       │   ├── droidspaces         # Compiled static musl C binary (upstream v7.0.0, commit 64f7411)
+│       │   ├── droidspaces         # Compiled static musl C binary (upstream v7.1.0, commit 4344dc5)
 │       │   └── busybox             # Multi-call utility binary
 │       ├── module.prop             # Module metadata & live prop description
 │       ├── customize.sh            # Live installer script (permission setup & binary copies)
@@ -182,7 +182,7 @@ droidspaces-webui/
 
 ## 5. External Integrations / APIs
 
-- **`droidspaces` Native C Binary**: Interacted with via standard POSIX `exec.CommandContext`. Uses sub-commands `start`, `stop`, `restart`, `show --format`, `info --format`, and `run`.
+- **`droidspaces` Native C Binary**: Interacted with via standard POSIX `exec.CommandContext`. Uses sub-commands `start`, `stop`, `restart`, `show --json`, `info --json`, and `run`.
 - **Android Kernel Namespaces & Cgroups**: Leveraged by the engine for `CLONE_NEWPID`, `CLONE_NEWNET`, `CLONE_NEWNS`, `CLONE_NEWUTS`, and `cgroupv2`/`cgroupv1` memory/CPU quotas.
 - **KernelSU / Magisk Framework**:
   - `service.sh` triggered on `sys.boot_completed=1` to launch `dsweb_arm64` as a daemon on port `84`.

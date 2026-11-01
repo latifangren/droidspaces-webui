@@ -1,5 +1,10 @@
 package model
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 type ShowResult struct {
 	Total      int                `json:"total"`
 	RAMTotalKB int64              `json:"ram_total_kb"`
@@ -35,6 +40,33 @@ type ContainerSummary struct {
 	MacvlanMode       string   `json:"macvlan_mode,omitempty"`
 	Anland            bool     `json:"anland,omitempty"`
 	AnlandSock        string   `json:"anland_sock,omitempty"`
+	SwapAllowed       bool     `json:"swap_allowed,omitempty"`
+}
+
+// UnmarshalJSON implements custom deserialization for ContainerSummary
+// to seamlessly handle swap_allowed whether emitted by upstream C as 0/1 integer or bool.
+func (cs *ContainerSummary) UnmarshalJSON(data []byte) error {
+	type Alias ContainerSummary
+	aux := struct {
+		*Alias
+		SwapAllowedVal interface{} `json:"swap_allowed"`
+	}{
+		Alias: (*Alias)(cs),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	switch v := aux.SwapAllowedVal.(type) {
+	case bool:
+		cs.SwapAllowed = v
+	case float64:
+		cs.SwapAllowed = v != 0
+	case int:
+		cs.SwapAllowed = v != 0
+	case string:
+		cs.SwapAllowed = v == "1" || strings.EqualFold(v, "true")
+	}
+	return nil
 }
 
 type PortMatrixEntry struct {
@@ -83,6 +115,7 @@ type StartRequest struct {
 	SELinuxPermissive bool     `json:"selinux_permissive,omitempty"`
 	Volatile          bool     `json:"volatile,omitempty"`
 	ForceCgroupV1     bool     `json:"force_cgroupv1,omitempty"`
+	AllowSwap         bool     `json:"allow_swap,omitempty"`
 	Memory            string   `json:"memory,omitempty"`
 	CPUs              string   `json:"cpus,omitempty"`
 	PIDsLimit         string   `json:"pids_limit,omitempty"`
@@ -165,6 +198,9 @@ type TemplateInfo struct {
 	Description string `json:"description"`
 	Installed   bool   `json:"installed"`
 	LocalPath   string `json:"local_path,omitempty"`
+	Origin      string `json:"origin,omitempty"` // "official" | "vanilla" | "custom"
+	SHA256      string `json:"sha256,omitempty"`
+	Author      string `json:"author,omitempty"`
 }
 
 type SettingsConfig struct {

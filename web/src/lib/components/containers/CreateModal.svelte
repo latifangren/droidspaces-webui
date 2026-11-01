@@ -1,4 +1,4 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { onMount } from 'svelte';
   import {
     X,
@@ -22,6 +22,7 @@
   export let runningContainers: any[] = [];
   export let existingContainers: any[] = [];
   export let isSubmitting: boolean = false;
+  export let submitLabel: string = 'Create Container';
   export let prefill: any = null;
   export let onRefreshTemplates: (() => Promise<void>) | (() => void) = () => {};
   export let onClose: () => void;
@@ -57,6 +58,7 @@
   let pulseAudio = false;
   let volatileMode = false;
   let allowSandboxing = true;
+  let allowSwap = false;
   let customBinds = '';
   let runAtBoot = false;
   let runAtBootPriority = 1;
@@ -93,9 +95,27 @@
       const idx = ramOptions.findIndex((r) => r.value === prefill.memory);
       if (idx !== -1) ramSliderIndex = idx;
     }
-    if (prefill.ports) {
-      ports = prefill.ports;
+    if (prefill.cpus) {
+      const idx = cpuOptions.findIndex((c) => c.value === prefill.cpus);
+      if (idx !== -1) cpuSliderIndex = idx;
     }
+    if (prefill.ports) {
+      ports = Array.isArray(prefill.ports) ? prefill.ports.join(', ') : prefill.ports;
+    }
+    if (prefill.hostname !== undefined) hostname = prefill.hostname || '';
+    if (prefill.dns !== undefined) dns = prefill.dns || '';
+    if (prefill.android_storage !== undefined) androidStorage = prefill.android_storage;
+    if (prefill.hw_access !== undefined) hwAccess = prefill.hw_access;
+    if (prefill.gpu !== undefined) gpu = prefill.gpu;
+    if (prefill.termux_x11 !== undefined) termuxX11 = prefill.termux_x11;
+    if (prefill.anland !== undefined) anland = prefill.anland;
+    if (prefill.pulse_audio !== undefined) pulseAudio = prefill.pulse_audio;
+    if (prefill.volatile !== undefined) volatileMode = prefill.volatile;
+    if (prefill.run_at_boot !== undefined) runAtBoot = prefill.run_at_boot;
+    if (prefill.run_at_boot_priority !== undefined) runAtBootPriority = prefill.run_at_boot_priority;
+    if (prefill.custom_init !== undefined) customInit = prefill.custom_init || '';
+    if (prefill.env_vars) envVars = Array.isArray(prefill.env_vars) ? prefill.env_vars.join('\\n') : prefill.env_vars;
+    if (prefill.binds) customBinds = Array.isArray(prefill.binds) ? prefill.binds.join('\\n') : prefill.binds;
     if (prefill.allow_sandboxing !== undefined) {
       allowSandboxing = prefill.allow_sandboxing;
     }
@@ -360,6 +380,7 @@
       volatile: volatileMode,
       allow_sandboxing: allowSandboxing,
       memory: ramOptions[ramSliderIndex].value || undefined,
+      allow_swap: ramOptions[ramSliderIndex].value ? allowSwap : undefined,
       cpus: cpuOptions[cpuSliderIndex].value || undefined,
       binds: customBinds ? customBinds.split('\n').map((b) => b.trim()).filter(Boolean) : undefined,
       run_at_boot: runAtBoot,
@@ -431,7 +452,16 @@
                       <CheckCircle size={14} class="text-primary shrink-0" />
                     {/if}
                   </div>
-                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono mb-1">
+                  <div class="flex items-center gap-1.5 text-[10px] text-muted font-mono mb-1 flex-wrap">
+                    {#if tpl.origin === 'official'}
+                      <span class="px-1 py-0.2 rounded bg-amber-400 text-black text-[9px] font-black uppercase">
+                        Official
+                      </span>
+                    {:else if tpl.origin === 'vanilla'}
+                      <span class="px-1 py-0.2 rounded bg-surface border border-line text-[9px] font-bold text-muted uppercase">
+                        Vanilla
+                      </span>
+                    {/if}
                     <span class="px-1 py-0.2 rounded bg-surface border border-line text-[9px] uppercase font-bold text-ink">
                       {tpl.type || 'dir'}
                     </span>
@@ -618,6 +648,17 @@
               bind:value={ramSliderIndex}
               class="w-full accent-primary cursor-pointer"
             />
+            {#if ramOptions[ramSliderIndex].value}
+              <label class="flex items-center justify-between p-2.5 bg-paper rounded-lg border-2 border-line cursor-pointer text-xs mt-2">
+                <span class="flex items-center gap-1.5 font-bold text-ink">
+                  Allow Host Swap (--allow-swap)
+                  {#if kernelCapabilities && kernelCapabilities.swap_limit === 0}
+                    <span class="text-[9px] text-amber-500 font-mono font-bold">(No swap_limit)</span>
+                  {/if}
+                </span>
+                <input type="checkbox" bind:checked={allowSwap} class="w-4 h-4 accent-primary cursor-pointer" />
+              </label>
+            {/if}
           </div>
 
           <div class="space-y-2">
@@ -943,7 +984,7 @@
             disabled={isSubmitting}
             class="btn-brutal btn-brutal-primary font-black"
           >
-            {isSubmitting ? 'Creating...' : 'Start Container'}
+            {isSubmitting ? 'Creating...' : submitLabel}
           </button>
         </div>
       </form>

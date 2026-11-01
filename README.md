@@ -44,7 +44,7 @@ Turn any modern Android phone (RAM $\ge$ 6 GB) into an energy-efficient, headles
 - **Visual Upstream Selection**: Dropdown selector in the container creation wizard to route NAT or Gateway WAN without manual interface typing.
 
 ### 6. Machine-Readable Kernel Diagnostics & Capability Gating (v7.0)
-- **32-Flag JSON Probe**: Direct integration with upstream `droidspaces check --format` returning 32 structured capability flags across namespaces, cgroups, security, and networking.
+- **32-Flag JSON Probe**: Direct integration with upstream `droidspaces check --json` (with adaptive `--format` fallback) returning structured capability flags across namespaces, cgroups, security, and networking.
 - **Dynamic UI Capability Gating**: The container creation wizard actively inspects kernel probes and alerts the user with contextual badges (e.g., `(No user_ns)`, `(No memcg)`, `(No cfs_bandwidth)`, `(⚠️ No kernel support)` for Macvlan) so misconfigurations are prevented before container launch.
 
 ### 7. Native Wayland Display (Anland Integration, v7.0)
@@ -64,6 +64,10 @@ Turn any modern Android phone (RAM $\ge$ 6 GB) into an energy-efficient, headles
 ### 9. Real-Time Hardware Telemetry
 - **Battery & Thermal Monitoring**: Polling directly from `/sys/class/power_supply/battery/` (capacity, charge status, temperature) and `/sys/devices/virtual/thermal/`.
 - **Host Resource Usage**: Direct kernel metrics for CPU load averages, RAM allocation, and `/data` storage availability.
+
+### 10. Android Host Hardware Bridge (Companion Ecosystem)
+- **Host Integration via [android-bridge](https://github.com/ravindu644/android-bridge)**: Companion Magisk/KernelSU/APatch module by [ravindu644](https://github.com/ravindu644) that enables root inside a Droidspaces container to execute host Android commands directly like an interactive `adb shell` without USB cables or wireless ADB (e.g., `android-bridge reboot`, `dumpsys battery`, `pm list packages`, `am broadcast`).
+- **WebUI Blueprint Integration**: The *Blueprints* tab includes a pre-configured template that automatically wires the `/dev/android-bridge:/run/android-bridge:ro` read-only socket mount into the container configuration.
 ---
 
 ## Documentation & Comprehensive Guides
@@ -91,17 +95,17 @@ To ensure the repository is 100% self-contained and reproducible without complex
 
 | Binary | Source Repository & Commit | License | Description |
 |---|---|---|---|
-| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`v7.0.0` / [`64f7411`](https://github.com/ravindu644/Droidspaces-OSS/commit/64f7411bbd339369f6bb1e07b3858c25381f2bf2)) | GPL-3.0-or-later | Official Musl C container runtime for ARM64 (`aarch64`). Built Oct 14 2026 from release commit `64f7411` (tree HEAD `37e8b45`). Features machine-readable `--format` probe, Anland Wayland display, and modernized `--x11`. |
+| **`droidspaces`** | [ravindu644/Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) (`v7.1.0` / [`4344dc5`](https://github.com/ravindu644/Droidspaces-OSS/commit/4344dc5fc4ab981f1cf2df54c93bf32a6ebbdc85)) | GPL-3.0-or-later | Official Musl C container runtime for ARM64 (`aarch64`). Official v7.1.0 release commit `4344dc5`. Features machine-readable `--json` probe, host swap controls (`--allow-swap`), runit init support, modern systemd 259+ seccomp mount API shim, devpts security hardening, Anland Wayland display, and modernized `--x11`. |
 | **`busybox`** | Droidspaces Artifacts (`v7.0.0` Musl) | GPL-2.0 | Multi-call POSIX binary for rootfs decompression, archive handling, and chroot execution. |
 | **`dsweb_arm64`** | Built from this repository (`cmd/dsweb`) | Open Source | Go daemon with embedded Svelte 5 frontend, persistent multi-terminal PTY hub, and REST API. |
 
 ### C Musl Binary Details:
-- **Binary Version**: `Droidspaces v7.0.0`
-- **Upstream Release Commit**: `64f7411bbd339369f6bb1e07b3858c25381f2bf2` (HEAD: `37e8b45de5ddc57d35cb8adfd8327add75e25159`)
+- **Binary Version**: `Droidspaces v7.1.0`
+- **Upstream Release Commit**: `4344dc5fc4ab981f1cf2df54c93bf32a6ebbdc85` (tree tag: `v7.1.0`)
 - **Author & Maintainer**: [ravindu644](https://github.com/ravindu644) ([Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS))
 - **Toolchain**: Static Musl C compiler targeting Linux AArch64 (`arm64-v8a`)
-- **Build Timestamp**: `Oct 14 2026 12:53:08`
-- **Verification**: `su -c '/data/adb/modules/droidspaces/bin/droidspaces -v'` returns `Droidspaces v7.0.0`.
+- **Build Timestamp**: `Oct 27 2026`
+- **Verification**: `su -c '/data/adb/modules/droidspaces/bin/droidspaces -v'` returns `Droidspaces v7.1.0`.
 
 ---
 

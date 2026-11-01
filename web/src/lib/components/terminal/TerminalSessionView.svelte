@@ -6,9 +6,12 @@
 
   export let sessionId: string;
   export let isActive: boolean;
+  export let isVisible: boolean = true;
   export let onRegisterSendKey: ((fn: (key: string) => void) => void) | null = null;
   export let onStatusChange: ((status: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
   export let onSessionNotFound: ((id: string) => void) | null = null;
+  export let onFocus: (() => void) | null = null;
+  export let onClearSendKey: (() => void) | null = null;
 
   let terminalContainer: HTMLDivElement;
   let term: Terminal | null = null;
@@ -17,6 +20,8 @@
   let resizeObserver: ResizeObserver | null = null;
   let reconnectTimeout: any = null;
   let isDestroyed = false;
+  const focusListener = () => onFocus?.();
+  const pointerListener = () => onFocus?.();
 
   $: if (isActive) {
     if (term && fitAddon) {
@@ -46,9 +51,12 @@
       ws = null;
     }
     if (term) {
+      term.textarea?.removeEventListener('focus', focusListener);
       term.dispose();
       term = null;
     }
+    terminalContainer?.removeEventListener('pointerdown', pointerListener);
+    if (onClearSendKey) onClearSendKey();
   });
 
   function initTerminal() {
@@ -90,9 +98,11 @@
     term.onData((data) => {
       sendData(data);
     });
+    term.textarea?.addEventListener('focus', focusListener);
+    terminalContainer.addEventListener('pointerdown', pointerListener);
 
     resizeObserver = new ResizeObserver(() => {
-      if (isActive && fitAddon && term) {
+      if (isVisible && fitAddon && term) {
         fitAddon.fit();
         sendResize();
       }
@@ -185,6 +195,15 @@
   export function clear() {
     term?.clear();
   }
+
+  export function getSelection(): string {
+    return term?.getSelection() || '';
+  }
+
+  export function pasteText(text: string) {
+    term?.paste(text);
+    term?.focus();
+  }
 </script>
 
 <!-- Dockhand Off-Screen DOM Preservation Technique:
@@ -192,7 +211,7 @@
      When inactive, shift off-screen with absolute -left-[9999px] while keeping dimensions. -->
 <div
   bind:this={terminalContainer}
-  class="w-full h-full p-2 bg-[#09090b] rounded-lg border-2 border-line {isActive
+  class="w-full h-full p-2 bg-[#09090b] rounded-lg border-2 border-line {isVisible
     ? 'relative'
     : 'absolute -left-[9999px] top-0 pointer-events-none'}"
 ></div>
